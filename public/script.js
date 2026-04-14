@@ -1,32 +1,39 @@
 /**
  * Lightning Dice Predictor - Four AI Pattern System
- * Main Controller - Four AI Models: Stick, Extreme Switch, Low-Mid Switch, Mid-High Switch
- * UPDATED: 20,000 records storage, full pagination, periodic retraining
+ * Main Controller - Four AI Models
+ * UPDATED: 20,000 AI training storage + 1,000 display history + Clear button
  */
 
 class LightningDiceApp {
     constructor() {
         this.apiBase = '/api';
         this.baseStats = null;
-        this.allResults = [];
+        
+        // 🤖 AI TRAINING STORAGE (Background - 20,000 records)
+        this.aiTrainingData = [];        // AI ট্রেনিং এর জন্য (20,000 capacity)
+        this.aiTrainingSize = 20000;     // ২০,০০০ রেকর্ড স্টোর করবে (ব্যাকগ্রাউন্ড)
+        
+        // 📊 UI DISPLAY HISTORY (User sees - 1,000 records only)
+        this.predictionHistory = [];      // ইউজার দেখে (1,000 capacity)
+        this.displayHistorySize = 1000;   // শুধু লাস্ট ১০০০ দেখাবে
+        
+        // Other variables
         this.lastGameId = null;
         this.autoRefreshInterval = null;
         this.timerInterval = null;
         this.refreshSeconds = 3;
         this.isInitialized = false;
         
-        // History tracking - UPDATED: 20,000 max size
-        this.predictionHistory = [];
-        this.currentPage = 1;
-        this.itemsPerPage = 10;
-        this.maxHistorySize = 20000;  // ✅ Changed from 1000 to 20000
-        this.isLoadingHistory = false;
-        
-        // Retraining tracking - NEW
+        // Retraining tracking
         this.recordsSinceLastRetrain = 0;
-        this.retrainThreshold = 100;  // Retrain every 100 new records
+        this.retrainThreshold = 100;      // প্রতি ১০০ নতুন রেকর্ডে রি-ট্রেন
         this.lastRetrainTime = null;
         this.retrainInterval = null;
+        
+        // Pagination for display
+        this.currentPage = 1;
+        this.itemsPerPage = 10;
+        this.isLoadingHistory = false;
         
         // Group definitions
         this.groups = {
@@ -40,16 +47,18 @@ class LightningDiceApp {
     
     async init() {
         console.log('🚀 Initializing Four AI Pattern System...');
-        console.log('📦 Max storage capacity: 20,000 records');
+        console.log(`🤖 AI Training Storage: ${this.aiTrainingSize} records (background)`);
+        console.log(`📊 Display History: ${this.displayHistorySize} records (UI)`);
         
-        this.loadHistoryFromLocalStorage();
+        this.loadDisplayHistoryFromLocalStorage();
+        this.loadAITrainingDataFromLocalStorage();
         this.bindEvents();
         
-        // Load ALL history data from API (all pages)
+        // Load ALL history data from API
         await this.loadFullHistoryFromAPI();
         
         // Train AI models with complete data
-        if (this.allResults.length >= 10) {
+        if (this.aiTrainingData.length >= 10) {
             await this.trainAllModels();
             this.lastRetrainTime = new Date();
         }
@@ -60,43 +69,120 @@ class LightningDiceApp {
         this.updateUI();
         this.startAutoRefresh();
         this.startTimer();
-        this.startPeriodicRetrain(); // ✅ NEW: Periodic retraining
+        this.startPeriodicRetrain();
         this.updateConnectionStatus(true);
         this.setupCollapsibleStats();
-        this.updateDataSizeIndicator(); // ✅ NEW: Show data size
+        this.updateDataSizeIndicator();
     }
     
-    loadHistoryFromLocalStorage() {
+    // ✅ Load ONLY display history (1,000 records) from localStorage
+    loadDisplayHistoryFromLocalStorage() {
         try {
-            const saved = localStorage.getItem('prediction_history');
+            const saved = localStorage.getItem('prediction_history_display');
             if (saved) {
                 this.predictionHistory = JSON.parse(saved);
-                console.log(`✅ Loaded ${this.predictionHistory.length} history records from localStorage`);
+                // Ensure not exceed display limit
+                if (this.predictionHistory.length > this.displayHistorySize) {
+                    this.predictionHistory = this.predictionHistory.slice(0, this.displayHistorySize);
+                    this.saveDisplayHistoryToLocalStorage();
+                }
+                console.log(`✅ Loaded ${this.predictionHistory.length} display records from localStorage`);
                 this.updateHistoryTable();
-            } else {
-                console.log('📭 No saved history found in localStorage');
             }
         } catch(e) {
-            console.warn('Failed to load history from localStorage:', e);
+            console.warn('Failed to load display history:', e);
             this.predictionHistory = [];
         }
     }
     
-    saveHistoryToLocalStorage() {
+    // ✅ Load AI training data (20,000 records) from localStorage
+    loadAITrainingDataFromLocalStorage() {
         try {
-            const toSave = this.predictionHistory.slice(0, this.maxHistorySize);
-            localStorage.setItem('prediction_history', JSON.stringify(toSave));
-            console.log(`✅ Saved ${toSave.length} history records to localStorage`);
+            const saved = localStorage.getItem('ai_training_data');
+            if (saved) {
+                this.aiTrainingData = JSON.parse(saved);
+                if (this.aiTrainingData.length > this.aiTrainingSize) {
+                    this.aiTrainingData = this.aiTrainingData.slice(0, this.aiTrainingSize);
+                    this.saveAITrainingDataToLocalStorage();
+                }
+                console.log(`✅ Loaded ${this.aiTrainingData.length} AI training records from localStorage`);
+            }
         } catch(e) {
-            console.warn('Failed to save history to localStorage:', e);
+            console.warn('Failed to load AI training data:', e);
+            this.aiTrainingData = [];
         }
     }
     
-    // ✅ NEW: Show current data size in UI
+    // ✅ Save ONLY display history
+    saveDisplayHistoryToLocalStorage() {
+        try {
+            const toSave = this.predictionHistory.slice(0, this.displayHistorySize);
+            localStorage.setItem('prediction_history_display', JSON.stringify(toSave));
+            console.log(`✅ Saved ${toSave.length} display records to localStorage`);
+        } catch(e) {
+            console.warn('Failed to save display history:', e);
+        }
+    }
+    
+    // ✅ Save AI training data (20,000 records)
+    saveAITrainingDataToLocalStorage() {
+        try {
+            const toSave = this.aiTrainingData.slice(0, this.aiTrainingSize);
+            localStorage.setItem('ai_training_data', JSON.stringify(toSave));
+            console.log(`✅ Saved ${toSave.length} AI training records to localStorage`);
+        } catch(e) {
+            console.warn('Failed to save AI training data:', e);
+        }
+    }
+    
+    // ✅ CLEAR BUTTON FUNCTION - clears display history only
+    clearDisplayHistory() {
+        if (confirm('Are you sure you want to clear ALL prediction history? This will only clear the display (UI) history. AI training data will remain intact.')) {
+            this.predictionHistory = [];
+            this.saveDisplayHistoryToLocalStorage();
+            this.currentPage = 1;
+            this.updateHistoryTable();
+            this.updatePaginationControls();
+            console.log('🗑️ Display history cleared!');
+            
+            // Show temporary message
+            const clearBtn = document.getElementById('clearHistoryBtn');
+            if (clearBtn) {
+                const originalText = clearBtn.innerHTML;
+                clearBtn.innerHTML = '✓ Cleared!';
+                setTimeout(() => {
+                    clearBtn.innerHTML = originalText;
+                }, 2000);
+            }
+        }
+    }
+    
+    // ✅ Clear ALL data (AI training + display) - for debugging
+    clearAllData() {
+        if (confirm('⚠️ WARNING: This will clear ALL data including AI training. Are you sure?')) {
+            this.predictionHistory = [];
+            this.aiTrainingData = [];
+            localStorage.removeItem('prediction_history_display');
+            localStorage.removeItem('ai_training_data');
+            localStorage.removeItem('ai_stick_data');
+            localStorage.removeItem('ai_extreme_switch_data');
+            localStorage.removeItem('ai_low_mid_switch_data');
+            localStorage.removeItem('ai_mid_high_switch_data');
+            localStorage.removeItem('ensemble_v4_weights');
+            console.log('🗑️ ALL data cleared!');
+            location.reload();
+        }
+    }
+    
     updateDataSizeIndicator() {
         const dataSizeElement = document.getElementById('dataSizeIndicator');
         if (dataSizeElement) {
-            dataSizeElement.textContent = `${this.allResults.length} / ${this.maxHistorySize}`;
+            dataSizeElement.textContent = `${this.aiTrainingData.length} / ${this.aiTrainingSize}`;
+        }
+        
+        const displaySizeElement = document.getElementById('displaySizeIndicator');
+        if (displaySizeElement) {
+            displaySizeElement.textContent = `${this.predictionHistory.length} / ${this.displayHistorySize}`;
         }
         
         const lastTrainElement = document.getElementById('lastTrainTime');
@@ -123,6 +209,11 @@ class LightningDiceApp {
         const refreshBtn = document.getElementById('refreshBtn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => this.checkForNewData(true));
+        }
+        
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+        if (clearHistoryBtn) {
+            clearHistoryBtn.addEventListener('click', () => this.clearDisplayHistory());
         }
         
         const autoRefreshToggle = document.getElementById('autoRefreshToggle');
@@ -153,21 +244,13 @@ class LightningDiceApp {
         }
     }
     
-    // ✅ UPDATED: Load ALL pages from history API (up to 20,000 records)
+    // ✅ Load ALL pages from history API (for AI training)
     async loadFullHistoryFromAPI() {
         if (this.isLoadingHistory) return;
         this.isLoadingHistory = true;
         
         try {
-            console.log('📜 Loading complete history from API (all pages)...');
-            
-            // First, check if we already have history in localStorage
-            if (this.predictionHistory.length > 0 && this.predictionHistory.length >= 1000) {
-                console.log(`📦 Using existing history from localStorage (${this.predictionHistory.length} records)`);
-                await this.fetchNewRecordsFromAPI();
-                this.isLoadingHistory = false;
-                return;
-            }
+            console.log('📜 Loading complete history from API for AI training...');
             
             // Fetch first page to get total count
             const firstResponse = await fetch(`${this.apiBase}/history?page=0&size=200`);
@@ -177,11 +260,11 @@ class LightningDiceApp {
             let allApiResults = [...firstPageData];
             console.log(`📊 Total records available in 24h: ${totalCount}`);
             
-            // Calculate how many pages we need (max 20,000 records or all available)
-            const recordsNeeded = Math.min(totalCount, this.maxHistorySize);
+            // Calculate how many pages we need (max AI training size)
+            const recordsNeeded = Math.min(totalCount, this.aiTrainingSize);
             const pagesNeeded = Math.ceil(recordsNeeded / 200);
             
-            console.log(`📚 Will fetch ${pagesNeeded} pages (${recordsNeeded} records max)`);
+            console.log(`📚 Will fetch ${pagesNeeded} pages (${recordsNeeded} records for AI training)`);
             
             // Fetch remaining pages
             for (let page = 1; page < pagesNeeded && page < 100; page++) {
@@ -189,13 +272,10 @@ class LightningDiceApp {
                 const response = await fetch(`${this.apiBase}/history?page=${page}&size=200`);
                 const pageData = await response.json();
                 allApiResults.push(...pageData);
-                
-                // Small delay to avoid rate limiting
                 await new Promise(resolve => setTimeout(resolve, 150));
                 
-                // Stop if we've reached max capacity
-                if (allApiResults.length >= this.maxHistorySize) {
-                    console.log(`📦 Reached max capacity (${this.maxHistorySize}), stopping fetch`);
+                if (allApiResults.length >= this.aiTrainingSize) {
+                    console.log(`📦 Reached AI training capacity (${this.aiTrainingSize}), stopping fetch`);
                     break;
                 }
             }
@@ -207,70 +287,97 @@ class LightningDiceApp {
             for (const item of allApiResults) {
                 if (seenIds.has(item.id)) continue;
                 seenIds.add(item.id);
-                
                 const gameResult = this.parseHistoryGameData(item);
-                if (gameResult) {
-                    gameResults.push(gameResult);
-                }
+                if (gameResult) gameResults.push(gameResult);
             }
             
-            // Sort by timestamp (newest first)
             gameResults.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
             
-            // Limit to maxHistorySize
-            this.allResults = gameResults.slice(0, this.maxHistorySize);
-            console.log(`✅ Loaded ${this.allResults.length} real history records from API`);
+            // Store in AI training storage (20,000 capacity)
+            this.aiTrainingData = gameResults.slice(0, this.aiTrainingSize);
+            this.saveAITrainingDataToLocalStorage();
             
-            // Update lastGameId
-            if (this.allResults.length > 0) {
-                this.lastGameId = this.allResults[0].id;
+            console.log(`✅ AI Training Storage: ${this.aiTrainingData.length} records`);
+            
+            if (this.aiTrainingData.length > 0) {
+                this.lastGameId = this.aiTrainingData[0].id;
             }
             
-            // Build prediction history from real data
-            await this.buildPredictionHistoryFromRealData();
+            // Build display history from real data (only last 1000)
+            await this.buildDisplayHistoryFromRealData();
             
             this.updateDataSizeIndicator();
             
         } catch (error) {
             console.error('❌ Error loading real history:', error);
-            console.log('⚠️ Using existing data from localStorage');
         } finally {
             this.isLoadingHistory = false;
         }
     }
     
-    // ✅ UPDATED: Fetch only new records from API (for updates)
-    async fetchNewRecordsFromAPI() {
-        try {
-            const response = await fetch(`${this.apiBase}/history?page=0&size=50`);
-            const newRecords = await response.json();
+    // ✅ Build ONLY display history (last 1000)
+    async buildDisplayHistoryFromRealData() {
+        console.log('🔨 Building display history (last 1000 records)...');
+        
+        const orderedResults = [...this.aiTrainingData].reverse();
+        const newDisplayHistory = [];
+        
+        for (let i = 1; i < orderedResults.length && newDisplayHistory.length < this.displayHistorySize; i++) {
+            const currentResult = orderedResults[i];
+            const previousResult = orderedResults[i - 1];
             
-            let newCount = 0;
-            const existingIds = new Set(this.allResults.map(r => r.id));
+            const lastResults = this.getLastNResultsFromHistory(orderedResults, i);
+            const currentGroup = currentResult.group;
+            const previousGroup = previousResult.group;
             
-            for (const item of newRecords) {
-                if (!existingIds.has(item.id)) {
-                    const gameResult = this.parseHistoryGameData(item);
-                    if (gameResult) {
-                        this.allResults.unshift(gameResult);
-                        newCount++;
-                    }
-                }
-            }
+            const predStick = window.AI_Stick ? window.AI_Stick.predict(currentGroup, previousGroup) : null;
+            const predExtreme = window.AI_ExtremeSwitch ? window.AI_ExtremeSwitch.predict(currentGroup, previousGroup) : null;
+            const predLowMid = window.AI_LowMidSwitch ? window.AI_LowMidSwitch.predict(currentGroup, previousGroup) : null;
+            const predMidHigh = window.AI_MidHighSwitch ? window.AI_MidHighSwitch.predict(currentGroup, previousGroup) : null;
             
-            // Limit to maxHistorySize
-            if (this.allResults.length > this.maxHistorySize) {
-                this.allResults = this.allResults.slice(0, this.maxHistorySize);
-            }
+            const predStickGroup = this.extractPredictionGroup(predStick);
+            const predExtremeGroup = this.extractPredictionGroup(predExtreme);
+            const predLowMidGroup = this.extractPredictionGroup(predLowMid);
+            const predMidHighGroup = this.extractPredictionGroup(predMidHigh);
             
-            if (newCount > 0) {
-                console.log(`🆕 Found ${newCount} new records from API`);
-                await this.buildPredictionHistoryFromRealData();
-                this.updateDataSizeIndicator();
-            }
-        } catch (error) {
-            console.warn('Could not fetch new records:', error.message);
+            const time = currentResult.timestamp.toLocaleTimeString();
+            
+            const historyEntry = {
+                id: `${currentResult.id}_${Date.now()}_${i}`,
+                time: time,
+                dice: currentResult.diceValues,
+                total: currentResult.total,
+                actualGroup: currentResult.group,
+                predStick: predStickGroup,
+                predExtreme: predExtremeGroup,
+                predLowMid: predLowMidGroup,
+                predMidHigh: predMidHighGroup,
+                ensemble: 'MEDIUM',
+                correctStick: predStickGroup === currentResult.group,
+                correctExtreme: predExtremeGroup === currentResult.group,
+                correctLowMid: predLowMidGroup === currentResult.group,
+                correctMidHigh: predMidHighGroup === currentResult.group,
+                correctEnsemble: false,
+                timestamp: currentResult.timestamp,
+                isReal: true
+            };
+            
+            newDisplayHistory.push(historyEntry);
         }
+        
+        this.predictionHistory = newDisplayHistory.slice(0, this.displayHistorySize);
+        this.saveDisplayHistoryToLocalStorage();
+        this.updateHistoryTable();
+        console.log(`✅ Display History: ${this.predictionHistory.length} records (last 1000)`);
+    }
+    
+    getLastNResultsFromHistory(history, currentIndex) {
+        const start = Math.max(0, currentIndex - 4);
+        const results = [];
+        for (let i = start; i < currentIndex; i++) {
+            results.push(history[i].group);
+        }
+        return results;
     }
     
     parseHistoryGameData(item) {
@@ -290,7 +397,6 @@ class LightningDiceApp {
                 isReal: true
             };
         } catch (e) {
-            console.warn('Failed to parse history item:', e);
             return null;
         }
     }
@@ -304,69 +410,48 @@ class LightningDiceApp {
         return 1;
     }
     
-    // ✅ UPDATED: Build prediction history from real data
-    async buildPredictionHistoryFromRealData() {
-        console.log('🔨 Building prediction history from real data...');
-        
-        const orderedResults = [...this.allResults].reverse();
-        this.predictionHistory = [];
-        
-        for (let i = 1; i < orderedResults.length && this.predictionHistory.length < this.maxHistorySize; i++) {
-            const currentResult = orderedResults[i];
-            const previousResult = orderedResults[i - 1];
+    async fetchNewRecordsFromAPI() {
+        try {
+            const response = await fetch(`${this.apiBase}/history?page=0&size=50`);
+            const newRecords = await response.json();
             
-            const lastResults = this.getLastNResultsFromHistory(orderedResults, i);
-            const currentGroup = currentResult.group;
-            const previousGroup = previousResult.group;
+            let newCount = 0;
+            const existingIds = new Set(this.aiTrainingData.map(r => r.id));
             
-            const predStick = window.AI_Stick ? window.AI_Stick.predict(currentGroup, previousGroup) : null;
-            const predExtreme = window.AI_ExtremeSwitch ? window.AI_ExtremeSwitch.predict(currentGroup, previousGroup) : null;
-            const predLowMid = window.AI_LowMidSwitch ? window.AI_LowMidSwitch.predict(currentGroup, previousGroup) : null;
-            const predMidHigh = window.AI_MidHighSwitch ? window.AI_MidHighSwitch.predict(currentGroup, previousGroup) : null;
+            for (const item of newRecords) {
+                if (!existingIds.has(item.id)) {
+                    const gameResult = this.parseHistoryGameData(item);
+                    if (gameResult) {
+                        this.aiTrainingData.unshift(gameResult);
+                        newCount++;
+                    }
+                }
+            }
             
-            const predStickGroup = this.extractPredictionGroup(predStick);
-            const predExtremeGroup = this.extractPredictionGroup(predExtreme);
-            const predLowMidGroup = this.extractPredictionGroup(predLowMid);
-            const predMidHighGroup = this.extractPredictionGroup(predMidHigh);
+            if (this.aiTrainingData.length > this.aiTrainingSize) {
+                this.aiTrainingData = this.aiTrainingData.slice(0, this.aiTrainingSize);
+            }
             
-            this.addToHistoryWithoutSave(currentResult, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup);
+            if (newCount > 0) {
+                console.log(`🆕 Found ${newCount} new records from API`);
+                this.saveAITrainingDataToLocalStorage();
+                await this.buildDisplayHistoryFromRealData();
+                this.updateDataSizeIndicator();
+            }
+        } catch (error) {
+            console.warn('Could not fetch new records:', error.message);
         }
-        
-        this.saveHistoryToLocalStorage();
-        this.updateHistoryTable();
-        console.log(`✅ Built ${this.predictionHistory.length} prediction history records`);
     }
     
-    getLastNResultsFromHistory(history, currentIndex) {
-        const start = Math.max(0, currentIndex - 4);
-        const results = [];
-        for (let i = start; i < currentIndex; i++) {
-            results.push(history[i].group);
-        }
-        return results;
-    }
-    
-    // ✅ UPDATED: Train all models with complete data
     async trainAllModels() {
-        console.log(`🎓 Training all 4 AI models with ${this.allResults.length} records...`);
+        console.log(`🎓 Training all 4 AI models with ${this.aiTrainingData.length} records...`);
         
-        const historyInOrder = this.getAllResultsInOrder();
+        const historyInOrder = this.getAITrainingDataInOrder();
         
-        if (window.AI_Stick) {
-            window.AI_Stick.train(historyInOrder);
-        }
-        
-        if (window.AI_ExtremeSwitch) {
-            window.AI_ExtremeSwitch.train(historyInOrder);
-        }
-        
-        if (window.AI_LowMidSwitch) {
-            window.AI_LowMidSwitch.train(historyInOrder);
-        }
-        
-        if (window.AI_MidHighSwitch) {
-            window.AI_MidHighSwitch.train(historyInOrder);
-        }
+        if (window.AI_Stick) window.AI_Stick.train(historyInOrder);
+        if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.train(historyInOrder);
+        if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.train(historyInOrder);
+        if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.train(historyInOrder);
         
         if (window.EnsembleVoterV4) {
             const accStick = window.AI_Stick?.getAccuracy() || 60;
@@ -379,47 +464,40 @@ class LightningDiceApp {
         this.recordsSinceLastRetrain = 0;
         this.lastRetrainTime = new Date();
         this.updateDataSizeIndicator();
-        
         console.log('✅ All 4 AI models trained!');
     }
     
-    // ✅ NEW: Periodic full retraining
     startPeriodicRetrain() {
-        // Retrain every 2 hours (7200000 ms)
         this.retrainInterval = setInterval(async () => {
             console.log('⏰ Periodic retrain triggered (2 hour interval)...');
             await this.fullRetrain();
         }, 2 * 60 * 60 * 1000);
     }
     
-    // ✅ NEW: Full retrain with current data
     async fullRetrain() {
         console.log('🔄 Starting full retrain...');
-        
-        if (this.allResults.length > 0) {
+        if (this.aiTrainingData.length > 0) {
             await this.trainAllModels();
-            await this.buildPredictionHistoryFromRealData();
+            await this.buildDisplayHistoryFromRealData();
             this.updateUI();
             console.log('✅ Full retrain complete');
         }
     }
     
-    // ✅ NEW: Check and retrain if threshold reached
     async checkAndRetrain() {
         this.recordsSinceLastRetrain++;
-        
         if (this.recordsSinceLastRetrain >= this.retrainThreshold) {
             console.log(`📊 Retrain threshold reached (${this.recordsSinceLastRetrain} new records), retraining...`);
             await this.fullRetrain();
         }
     }
     
-    getAllResultsInOrder() {
-        return [...this.allResults].reverse();
+    getAITrainingDataInOrder() {
+        return [...this.aiTrainingData].reverse();
     }
     
     getLastNResults(n) {
-        const orderedResults = this.getAllResultsInOrder();
+        const orderedResults = this.getAITrainingDataInOrder();
         return orderedResults.slice(-n).map(r => r.group);
     }
     
@@ -449,7 +527,6 @@ class LightningDiceApp {
         return 'UNKNOWN';
     }
     
-    // ✅ UPDATED: Check for new data with retrain trigger
     async checkForNewData(manual = false) {
         if (!this.isInitialized) return;
         
@@ -479,16 +556,19 @@ class LightningDiceApp {
                 const predMidHighGroup = this.extractPredictionGroup(predMidHigh);
                 const ensembleGroup = ensemble?.final?.group || 'MEDIUM';
                 
-                this.addToHistory(gameResult, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup);
+                // Add to display history (with auto-limit)
+                this.addToDisplayHistory(gameResult, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup);
                 
-                this.allResults.unshift(gameResult);
+                // Add to AI training storage
+                this.aiTrainingData.unshift(gameResult);
                 this.lastGameId = gameResult.id;
                 this.latestResult = gameResult;
                 
-                // Limit to maxHistorySize
-                if (this.allResults.length > this.maxHistorySize) {
-                    this.allResults.pop();
+                if (this.aiTrainingData.length > this.aiTrainingSize) {
+                    this.aiTrainingData.pop();
                 }
+                
+                this.saveAITrainingDataToLocalStorage();
                 
                 // Update AI models incrementally
                 if (window.AI_Stick) window.AI_Stick.updateWithResult(gameResult, previousGroup);
@@ -510,7 +590,6 @@ class LightningDiceApp {
                 this.updateConnectionStatus(true);
                 this.updateDataSizeIndicator();
                 
-                // ✅ Check if we need to retrain
                 await this.checkAndRetrain();
             }
         } catch (error) {
@@ -518,29 +597,8 @@ class LightningDiceApp {
         }
     }
     
-    extractPredictionGroup(prediction) {
-        if (!prediction) return 'MEDIUM';
-        
-        if (prediction.prediction === "STICK" && prediction.nextGroup) {
-            return prediction.nextGroup;
-        }
-        if (prediction.prediction === "SWITCH" && prediction.nextGroup) {
-            return prediction.nextGroup;
-        }
-        if (prediction.prediction === "CONTINUE" && prediction.pattern) {
-            const parts = prediction.pattern.split("→");
-            if (parts.length >= 2) {
-                return parts[1].trim();
-            }
-        }
-        if (prediction.prediction === "BREAK" && prediction.nextGroup) {
-            return prediction.nextGroup;
-        }
-        
-        return 'MEDIUM';
-    }
-    
-    addToHistory(result, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup) {
+    // ✅ Add to display history only (with auto-limit)
+    addToDisplayHistory(result, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup) {
         const time = result.timestamp.toLocaleTimeString();
         
         const historyEntry = {
@@ -567,42 +625,27 @@ class LightningDiceApp {
         if (!exists) {
             this.predictionHistory.unshift(historyEntry);
             
-            if (this.predictionHistory.length > this.maxHistorySize) {
+            // ✅ Auto-remove old records when exceeds 1000
+            if (this.predictionHistory.length > this.displayHistorySize) {
                 this.predictionHistory.pop();
+                console.log(`📊 Auto-cleaned: Display history now at ${this.displayHistorySize} records`);
             }
             
-            this.saveHistoryToLocalStorage();
+            this.saveDisplayHistoryToLocalStorage();
             this.updateHistoryTable();
         }
     }
     
-    addToHistoryWithoutSave(result, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup) {
-        const time = result.timestamp.toLocaleTimeString();
-        
-        const historyEntry = {
-            id: `${result.id}_${Date.now()}`,
-            time: time,
-            dice: result.diceValues,
-            total: result.total,
-            actualGroup: result.group,
-            predStick: predStickGroup,
-            predExtreme: predExtremeGroup,
-            predLowMid: predLowMidGroup,
-            predMidHigh: predMidHighGroup,
-            ensemble: 'MEDIUM',
-            correctStick: predStickGroup === result.group,
-            correctExtreme: predExtremeGroup === result.group,
-            correctLowMid: predLowMidGroup === result.group,
-            correctMidHigh: predMidHighGroup === result.group,
-            correctEnsemble: false,
-            timestamp: result.timestamp,
-            isReal: true
-        };
-        
-        const exists = this.predictionHistory.some(h => h.id === historyEntry.id);
-        if (!exists) {
-            this.predictionHistory.push(historyEntry);
+    extractPredictionGroup(prediction) {
+        if (!prediction) return 'MEDIUM';
+        if (prediction.prediction === "STICK" && prediction.nextGroup) return prediction.nextGroup;
+        if (prediction.prediction === "SWITCH" && prediction.nextGroup) return prediction.nextGroup;
+        if (prediction.prediction === "CONTINUE" && prediction.pattern) {
+            const parts = prediction.pattern.split("→");
+            if (parts.length >= 2) return parts[1].trim();
         }
+        if (prediction.prediction === "BREAK" && prediction.nextGroup) return prediction.nextGroup;
+        return 'MEDIUM';
     }
     
     updateHistoryTable() {
@@ -613,7 +656,7 @@ class LightningDiceApp {
         const pageItems = this.predictionHistory.slice(startIndex, startIndex + this.itemsPerPage);
         
         if (pageItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8">No history data yet...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">No history data yet... Click "Clear History" to reset or wait for new data...</td></tr>';
             this.updatePaginationControls();
             return;
         }
@@ -625,7 +668,6 @@ class LightningDiceApp {
                 if (g === 'HIGH') return '🟢';
                 return '⚪';
             };
-            
             const getBadgeClass = (correct) => correct ? 'correct' : 'incorrect';
             
             return `
@@ -666,10 +708,7 @@ class LightningDiceApp {
     
     updateAIPredictions() {
         const lastResults = this.getLastNResults(4);
-        if (lastResults.length < 4) {
-            console.log('⚠️ Not enough results for prediction:', lastResults.length);
-            return;
-        }
+        if (lastResults.length < 4) return;
         
         const currentGroup = lastResults[lastResults.length - 1];
         const previousGroup = lastResults.length >= 2 ? lastResults[lastResults.length - 2] : currentGroup;
@@ -683,8 +722,7 @@ class LightningDiceApp {
         
         if (predStick) {
             document.getElementById('aiStickInput').textContent = `${previousGroup} → ${currentGroup}`;
-            const stickPredText = predStick.prediction === "STICK" ? 
-                `${predStick.nextGroup} (Stick)` : `Switch to ${predStick.nextGroup}`;
+            const stickPredText = predStick.prediction === "STICK" ? `${predStick.nextGroup} (Stick)` : `Switch to ${predStick.nextGroup}`;
             document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${stickPredText}`;
             document.getElementById('aiStickConf').textContent = `${predStick.confidence}%`;
             document.getElementById('aiStickAcc').textContent = `${predStick.accuracy.toFixed(1)}%`;
@@ -780,21 +818,16 @@ class LightningDiceApp {
     }
     
     updateStatsUI() {
-        // Stats UI updated without /stats API
-        const totalCount = this.allResults.length;
+        const totalCount = this.aiTrainingData.length;
         document.getElementById('totalRounds').textContent = totalCount.toLocaleString();
         
-        // Calculate average from actual results
         let totalSum = 0;
-        this.allResults.forEach(result => {
-            totalSum += result.total;
-        });
+        this.aiTrainingData.forEach(result => { totalSum += result.total; });
         const avgResult = totalCount > 0 ? (totalSum / totalCount).toFixed(2) : 0;
         document.getElementById('avgResult').textContent = avgResult;
         
-        // Calculate group distribution
         const groupCounts = { LOW: 0, MEDIUM: 0, HIGH: 0 };
-        this.allResults.forEach(result => {
+        this.aiTrainingData.forEach(result => {
             if (result.group !== 'UNKNOWN') groupCounts[result.group]++;
         });
         
@@ -802,25 +835,20 @@ class LightningDiceApp {
         if (groupCounts.MEDIUM > maxCount) { mostActive = 'MEDIUM'; maxCount = groupCounts.MEDIUM; }
         if (groupCounts.HIGH > maxCount) { mostActive = 'HIGH'; }
         document.getElementById('mostActiveGroup').textContent = mostActive;
-        
         document.getElementById('lightningBoost').textContent = 'N/A';
     }
     
     updateStatisticsTable() {
         const tbody = document.getElementById('statsTableBody');
-        
         if (!tbody) return;
         
-        // Calculate frequency from allResults
         const frequencyMap = {};
         const lastSeenMap = {};
         
-        this.allResults.forEach(result => {
+        this.aiTrainingData.forEach(result => {
             const num = result.total;
             frequencyMap[num] = (frequencyMap[num] || 0) + 1;
-            if (!lastSeenMap[num]) {
-                lastSeenMap[num] = result.timestamp;
-            }
+            if (!lastSeenMap[num]) lastSeenMap[num] = result.timestamp;
         });
         
         const numbers = [];
@@ -842,13 +870,14 @@ class LightningDiceApp {
             const groupClass = `group-${group.toLowerCase()}`;
             const lastTime = item.lastOccurredAt ? new Date(item.lastOccurredAt) : null;
             const timeAgo = lastTime ? this.getTimeAgo(lastTime) : 'Never';
+            const percentage = this.aiTrainingData.length > 0 ? Math.round((item.count / this.aiTrainingData.length) * 100) : 0;
             
             return `
                 <tr>
                     <td><strong>${item.wheelResult}</strong></td>
                     <td><span class="group-badge ${groupClass}">${group}</span></td>
                     <td>${item.count}</td>
-                    <td>${item.count > 0 ? Math.round((item.count / this.allResults.length) * 100) : 0}%</td>
+                    <td>${percentage}%</td>
                     <td>${timeAgo}</td>
                 </tr>
             `;
@@ -864,9 +893,9 @@ class LightningDiceApp {
     }
     
     updateGroupProbabilities() {
-        if (!this.allResults.length) return;
+        if (!this.aiTrainingData.length) return;
         
-        const recentResults = this.allResults.slice(0, 10);
+        const recentResults = this.aiTrainingData.slice(0, 10);
         const recentCount = { LOW: 0, MEDIUM: 0, HIGH: 0 };
         recentResults.forEach(r => { if (r && r.group) recentCount[r.group]++; });
         
@@ -892,12 +921,12 @@ class LightningDiceApp {
         const resultsGrid = document.getElementById('resultsGrid');
         if (!resultsGrid) return;
         
-        if (this.allResults.length === 0) {
+        if (this.aiTrainingData.length === 0) {
             resultsGrid.innerHTML = '<div class="loading">No results yet</div>';
             return;
         }
         
-        const recentResults = this.allResults.slice(0, 10);
+        const recentResults = this.aiTrainingData.slice(0, 10);
         resultsGrid.innerHTML = recentResults.map(result => {
             const isLightning = result.multiplier > 10;
             const time = result.timestamp.toLocaleTimeString();
@@ -985,9 +1014,9 @@ class LightningDiceApp {
             
             if (data && data.data) {
                 const gameResult = this.parseGameData(data);
-                const existingIndex = this.allResults.findIndex(r => r.id === gameResult.id);
+                const existingIndex = this.aiTrainingData.findIndex(r => r.id === gameResult.id);
                 if (existingIndex === -1) {
-                    this.allResults.unshift(gameResult);
+                    this.aiTrainingData.unshift(gameResult);
                     this.lastGameId = gameResult.id;
                     this.latestResult = gameResult;
                     console.log('✅ Latest data loaded');
