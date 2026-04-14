@@ -58,7 +58,6 @@ app.get('/api/stats', asyncHandler(async (req, res) => {
             },
             headers: getApiHeaders(),
             timeout: 15000,
-            // Add retry mechanism
             validateStatus: function (status) {
                 return status >= 200 && status < 500;
             }
@@ -75,7 +74,6 @@ app.get('/api/stats', asyncHandler(async (req, res) => {
         }
     } catch (error) {
         console.error('❌ Error fetching stats:', error.message);
-        // Return cached data if available, even if expired
         if (statsCache) {
             console.log('⚠️ Returning expired cache due to API error');
             return res.json({ ...statsCache, fromCache: true, cacheExpired: true });
@@ -123,6 +121,33 @@ app.get('/api/test', asyncHandler(async (req, res) => {
     }
 }));
 
+// ============ KEEP-ALIVE FUNCTION FOR RAILWAY ============
+// This prevents Railway from sleeping the free tier
+// Pings the health endpoint every 5 minutes
+
+const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+setInterval(async () => {
+    try {
+        const protocol = process.env.RAILWAY ? 'https' : 'http';
+        const host = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${PORT}`;
+        const url = `${protocol}://${host}/api/health`;
+        
+        // Only ping if we have a public domain (deployed on Railway)
+        if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+            const response = await axios.get(url, { timeout: 5000 });
+            console.log(`🔄 Keep-alive ping sent at ${new Date().toISOString()} - Status: ${response.status}`);
+        } else {
+            // Local development - just log
+            console.log(`💤 Keep-alive active (local mode) - ${new Date().toISOString()}`);
+        }
+    } catch (error) {
+        console.log(`⚠️ Keep-alive ping failed: ${error.message}`);
+    }
+}, KEEP_ALIVE_INTERVAL);
+
+console.log('⏰ Keep-alive service started - pinging every 5 minutes');
+
 // Error handler
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err.message);
@@ -141,4 +166,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
     console.log(`🔧 Test API: http://localhost:${PORT}/api/test`);
     console.log(`🚀 Server running on port ${PORT}\n`);
+    console.log(`⏰ Keep-alive will ping every 5 minutes to prevent sleeping\n`);
 });
