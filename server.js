@@ -2,24 +2,97 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ========== GLOBAL SERVER STORAGE ==========
+// সব ডিভাইস থেকে একই ডাটা দেখানোর জন্য সার্ভারে স্টোর করছি
+
+// AI Training Data Storage (20,000 records)
+let serverAITrainingData = [];
+let serverPredictionHistory = [];
+
+// AI Models Data Storage
+let serverAIModelsData = {
+    stick: null,
+    extremeSwitch: null,
+    lowMidSwitch: null,
+    midHighSwitch: null,
+    ensembleWeights: null
+};
+
+// File paths for persistence (Railway-এ কাজ করবে)
+const DATA_DIR = path.join(__dirname, 'data');
+const AI_TRAINING_FILE = path.join(DATA_DIR, 'ai_training.json');
+const PREDICTION_HISTORY_FILE = path.join(DATA_DIR, 'prediction_history.json');
+const AI_MODELS_FILE = path.join(DATA_DIR, 'ai_models.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Load data from files on startup
+function loadDataFromFiles() {
+    try {
+        if (fs.existsSync(AI_TRAINING_FILE)) {
+            serverAITrainingData = JSON.parse(fs.readFileSync(AI_TRAINING_FILE, 'utf8'));
+            console.log(`✅ Loaded ${serverAITrainingData.length} AI training records from file`);
+        }
+        if (fs.existsSync(PREDICTION_HISTORY_FILE)) {
+            serverPredictionHistory = JSON.parse(fs.readFileSync(PREDICTION_HISTORY_FILE, 'utf8'));
+            console.log(`✅ Loaded ${serverPredictionHistory.length} prediction history records from file`);
+        }
+        if (fs.existsSync(AI_MODELS_FILE)) {
+            serverAIModelsData = JSON.parse(fs.readFileSync(AI_MODELS_FILE, 'utf8'));
+            console.log(`✅ Loaded AI models data from file`);
+        }
+    } catch (e) {
+        console.error('Error loading data from files:', e);
+    }
+}
+
+// Save data to files
+function saveAITrainingDataToFile() {
+    try {
+        fs.writeFileSync(AI_TRAINING_FILE, JSON.stringify(serverAITrainingData.slice(0, 20000)));
+        console.log(`💾 Saved ${serverAITrainingData.length} AI training records to file`);
+    } catch (e) {
+        console.error('Error saving AI training data:', e);
+    }
+}
+
+function savePredictionHistoryToFile() {
+    try {
+        fs.writeFileSync(PREDICTION_HISTORY_FILE, JSON.stringify(serverPredictionHistory.slice(0, 1000)));
+        console.log(`💾 Saved ${serverPredictionHistory.length} prediction history records to file`);
+    } catch (e) {
+        console.error('Error saving prediction history:', e);
+    }
+}
+
+function saveAIModelsDataToFile() {
+    try {
+        fs.writeFileSync(AI_MODELS_FILE, JSON.stringify(serverAIModelsData));
+        console.log(`💾 Saved AI models data to file`);
+    } catch (e) {
+        console.error('Error saving AI models data:', e);
+    }
+}
+
+// Load existing data on startup
+loadDataFromFiles();
+
 // CORS configuration
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
-
-// Removed statsCache - no longer using /stats API
-
-const asyncHandler = (fn) => (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-};
 
 // Helper function to get headers for casino.org API
 const getApiHeaders = () => {
@@ -38,13 +111,82 @@ const getApiHeaders = () => {
     };
 };
 
-// STATS API - COMMENTED OUT (not needed for training)
-/*
-app.get('/api/stats', asyncHandler(async (req, res) => {
-    // This endpoint is disabled as per requirement
-    res.json({ message: 'Stats API disabled - using history API for training' });
+const asyncHandler = (fn) => (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// ========== NEW API ENDPOINTS FOR SERVER STORAGE ==========
+
+// Save AI Training Data to Server
+app.post('/api/server/save-training', asyncHandler(async (req, res) => {
+    const { data, maxSize } = req.body;
+    if (data && Array.isArray(data)) {
+        serverAITrainingData = data.slice(0, maxSize || 20000);
+        saveAITrainingDataToFile();
+        res.json({ success: true, count: serverAITrainingData.length });
+    } else {
+        res.json({ success: false, error: 'Invalid data' });
+    }
 }));
-*/
+
+// Get AI Training Data from Server
+app.get('/api/server/get-training', asyncHandler(async (req, res) => {
+    res.json({ success: true, data: serverAITrainingData, count: serverAITrainingData.length });
+}));
+
+// Save Prediction History to Server
+app.post('/api/server/save-history', asyncHandler(async (req, res) => {
+    const { data, maxSize } = req.body;
+    if (data && Array.isArray(data)) {
+        serverPredictionHistory = data.slice(0, maxSize || 1000);
+        savePredictionHistoryToFile();
+        res.json({ success: true, count: serverPredictionHistory.length });
+    } else {
+        res.json({ success: false, error: 'Invalid data' });
+    }
+}));
+
+// Get Prediction History from Server
+app.get('/api/server/get-history', asyncHandler(async (req, res) => {
+    res.json({ success: true, data: serverPredictionHistory, count: serverPredictionHistory.length });
+}));
+
+// Save AI Models Data
+app.post('/api/server/save-models', asyncHandler(async (req, res) => {
+    const { stick, extremeSwitch, lowMidSwitch, midHighSwitch, ensembleWeights } = req.body;
+    if (stick) serverAIModelsData.stick = stick;
+    if (extremeSwitch) serverAIModelsData.extremeSwitch = extremeSwitch;
+    if (lowMidSwitch) serverAIModelsData.lowMidSwitch = lowMidSwitch;
+    if (midHighSwitch) serverAIModelsData.midHighSwitch = midHighSwitch;
+    if (ensembleWeights) serverAIModelsData.ensembleWeights = ensembleWeights;
+    saveAIModelsDataToFile();
+    res.json({ success: true });
+}));
+
+// Get AI Models Data
+app.get('/api/server/get-models', asyncHandler(async (req, res) => {
+    res.json({ success: true, data: serverAIModelsData });
+}));
+
+// Clear Prediction History (Server side)
+app.delete('/api/server/clear-history', asyncHandler(async (req, res) => {
+    serverPredictionHistory = [];
+    savePredictionHistoryToFile();
+    res.json({ success: true, message: 'History cleared on server' });
+}));
+
+// Get server stats
+app.get('/api/server/stats', asyncHandler(async (req, res) => {
+    res.json({
+        success: true,
+        trainingCount: serverAITrainingData.length,
+        historyCount: serverPredictionHistory.length,
+        maxTraining: 20000,
+        maxHistory: 1000
+    });
+}));
+
+// ========== ORIGINAL API ENDPOINTS ==========
 
 // Latest result API
 app.get('/api/latest', asyncHandler(async (req, res) => {
@@ -60,11 +202,11 @@ app.get('/api/latest', asyncHandler(async (req, res) => {
     }
 }));
 
-// Full History API with pagination - SUPPORTS UP TO 200 RECORDS PER PAGE
+// Full History API with pagination
 app.get('/api/history', asyncHandler(async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 0;
-        const size = Math.min(parseInt(req.query.size) || 200, 200); // Max 200 per page
+        const size = Math.min(parseInt(req.query.size) || 200, 200);
         const duration = req.query.duration || 24;
         
         console.log(`📜 Fetching history page ${page} with size ${size}...`);
@@ -84,7 +226,6 @@ app.get('/api/history', asyncHandler(async (req, res) => {
             }
         );
         
-        // Forward total count header
         const totalCount = response.headers['x-total-count'];
         if (totalCount) {
             res.set('X-Total-Count', totalCount);
@@ -106,11 +247,15 @@ app.get('/api/health', (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         nodeVersion: process.version,
-        environment: process.env.NODE_ENV || 'production'
+        environment: process.env.NODE_ENV || 'production',
+        serverStorage: {
+            trainingRecords: serverAITrainingData.length,
+            historyRecords: serverPredictionHistory.length
+        }
     });
 });
 
-// Test endpoint to check if API is accessible
+// Test endpoint
 app.get('/api/test', asyncHandler(async (req, res) => {
     try {
         const response = await axios.get('https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice/latest', {
@@ -123,17 +268,8 @@ app.get('/api/test', asyncHandler(async (req, res) => {
     }
 }));
 
-// AI Accuracy API - NEW
-app.get('/api/ai/accuracy', (req, res) => {
-    // This will be populated by frontend, server just returns placeholder
-    res.json({ 
-        message: 'AI accuracy data is stored in browser localStorage',
-        endpoint: '/api/ai/accuracy is for reference only'
-    });
-});
-
 // Keep-alive function
-const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000;
 
 setInterval(async () => {
     try {
@@ -144,8 +280,6 @@ setInterval(async () => {
         if (process.env.RAILWAY_PUBLIC_DOMAIN) {
             const response = await axios.get(url, { timeout: 5000 });
             console.log(`🔄 Keep-alive ping sent at ${new Date().toISOString()} - Status: ${response.status}`);
-        } else {
-            console.log(`💤 Keep-alive active (local mode) - ${new Date().toISOString()}`);
         }
     } catch (error) {
         console.log(`⚠️ Keep-alive ping failed: ${error.message}`);
@@ -165,8 +299,9 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System`);
+    console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System (SERVER STORAGE MODE)`);
     console.log(`📍 http://localhost:${PORT}`);
+    console.log(`💾 Server Storage: ${serverAITrainingData.length} training records, ${serverPredictionHistory.length} history records`);
     console.log(`🔄 Latest API: http://localhost:${PORT}/api/latest`);
     console.log(`📜 History API: http://localhost:${PORT}/api/history`);
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
