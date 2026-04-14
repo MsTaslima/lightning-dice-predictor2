@@ -17,8 +17,8 @@ class LightningDiceApp {
         // History tracking
         this.predictionHistory = [];
         this.currentPage = 1;
-        this.itemsPerPage = 10;
-        this.maxHistorySize = 200;
+        this.itemsPerPage = 20;
+        this.maxHistorySize = 1000;
         
         // Group definitions
         this.groups = {
