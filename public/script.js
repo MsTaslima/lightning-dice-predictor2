@@ -1,7 +1,7 @@
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller - Four AI Models
- * WITH SERVER STORAGE (No Data Merging - Clean Version)
+ * WITH SERVER STORAGE - Fixed Date parsing issue
  */
 
 class LightningDiceApp {
@@ -35,7 +35,7 @@ class LightningDiceApp {
         this.itemsPerPage = 10;
         this.isLoadingHistory = false;
         
-        // Server sync flag (no merging, just sync)
+        // Server sync flag
         this.syncInProgress = false;
         
         // Group definitions
@@ -48,6 +48,29 @@ class LightningDiceApp {
         this.init();
     }
     
+    // ========== HELPER: Fix Date objects after loading from server ==========
+    
+    fixDateObjects(data) {
+        if (!data || !Array.isArray(data)) return data;
+        
+        return data.map(item => {
+            // Create a new object to avoid mutation issues
+            const fixedItem = { ...item };
+            
+            // Fix timestamp if it exists and is a string
+            if (fixedItem.timestamp && typeof fixedItem.timestamp === 'string') {
+                fixedItem.timestamp = new Date(fixedItem.timestamp);
+            }
+            
+            // Fix lastOccurredAt if it exists (for statistics)
+            if (fixedItem.lastOccurredAt && typeof fixedItem.lastOccurredAt === 'string') {
+                fixedItem.lastOccurredAt = new Date(fixedItem.lastOccurredAt);
+            }
+            
+            return fixedItem;
+        });
+    }
+    
     async init() {
         console.log('🚀 Initializing Four AI Pattern System with Server Storage...');
         console.log(`🤖 AI Training Storage: ${this.aiTrainingSize} records (background)`);
@@ -57,7 +80,7 @@ class LightningDiceApp {
         this.loadAITrainingDataFromLocalStorage();
         this.bindEvents();
         
-        // 🔥 Load from server (NO MERGING - just load what server has)
+        // Load from server (with Date fix)
         await this.loadFromServer();
         
         // If server has no data, load from API
@@ -86,16 +109,22 @@ class LightningDiceApp {
         this.startPeriodicServerSync();
     }
     
-    // ========== SERVER STORAGE METHODS (NO MERGING) ==========
+    // ========== SERVER STORAGE METHODS ==========
     
     async syncTrainingDataToServer() {
         if (this.syncInProgress) return;
         this.syncInProgress = true;
         try {
+            // Prepare data for server (convert Dates to ISO strings for JSON)
+            const dataToSend = this.aiTrainingData.map(item => ({
+                ...item,
+                timestamp: item.timestamp instanceof Date ? item.timestamp.toISOString() : item.timestamp
+            }));
+            
             const response = await fetch('/api/server/save-training', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: this.aiTrainingData, maxSize: this.aiTrainingSize })
+                body: JSON.stringify({ data: dataToSend, maxSize: this.aiTrainingSize })
             });
             const result = await response.json();
             if (result.success) {
@@ -110,10 +139,16 @@ class LightningDiceApp {
     
     async syncHistoryToServer() {
         try {
+            // Prepare data for server (convert Dates to ISO strings for JSON)
+            const dataToSend = this.predictionHistory.map(item => ({
+                ...item,
+                timestamp: item.timestamp instanceof Date ? item.timestamp.toISOString() : item.timestamp
+            }));
+            
             const response = await fetch('/api/server/save-history', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: this.predictionHistory, maxSize: this.displayHistorySize })
+                body: JSON.stringify({ data: dataToSend, maxSize: this.displayHistorySize })
             });
             const result = await response.json();
             if (result.success) {
@@ -148,14 +183,14 @@ class LightningDiceApp {
         }
     }
     
-    // SIMPLIFIED: Just load from server, no merging logic
     async loadFromServer() {
         try {
             // Load training data from server
             const trainingRes = await fetch('/api/server/get-training');
             const trainingData = await trainingRes.json();
             if (trainingData.success && trainingData.data && trainingData.data.length > 0) {
-                this.aiTrainingData = trainingData.data;
+                // Fix Date objects after loading from server
+                this.aiTrainingData = this.fixDateObjects(trainingData.data);
                 this.saveAITrainingDataToLocalStorage();
                 console.log(`✅ Loaded ${this.aiTrainingData.length} training records from server`);
             } else {
@@ -166,7 +201,8 @@ class LightningDiceApp {
             const historyRes = await fetch('/api/server/get-history');
             const historyData = await historyRes.json();
             if (historyData.success && historyData.data && historyData.data.length > 0) {
-                this.predictionHistory = historyData.data;
+                // Fix Date objects after loading from server
+                this.predictionHistory = this.fixDateObjects(historyData.data);
                 this.saveDisplayHistoryToLocalStorage();
                 this.updateHistoryTable();
                 console.log(`✅ Loaded ${this.predictionHistory.length} history records from server`);
@@ -223,7 +259,7 @@ class LightningDiceApp {
             await this.syncHistoryToServer();
             await this.syncAIModelsToServer();
             console.log('✅ Periodic server sync complete');
-        }, 5 * 60 * 1000); // Every 5 minutes
+        }, 5 * 60 * 1000);
     }
     
     // ========== ORIGINAL METHODS ==========
@@ -232,7 +268,10 @@ class LightningDiceApp {
         try {
             const saved = localStorage.getItem('prediction_history_display');
             if (saved) {
-                this.predictionHistory = JSON.parse(saved);
+                let data = JSON.parse(saved);
+                // Fix Date objects from localStorage
+                data = this.fixDateObjects(data);
+                this.predictionHistory = data;
                 if (this.predictionHistory.length > this.displayHistorySize) {
                     this.predictionHistory = this.predictionHistory.slice(0, this.displayHistorySize);
                     this.saveDisplayHistoryToLocalStorage();
@@ -250,7 +289,10 @@ class LightningDiceApp {
         try {
             const saved = localStorage.getItem('ai_training_data');
             if (saved) {
-                this.aiTrainingData = JSON.parse(saved);
+                let data = JSON.parse(saved);
+                // Fix Date objects from localStorage
+                data = this.fixDateObjects(data);
+                this.aiTrainingData = data;
                 if (this.aiTrainingData.length > this.aiTrainingSize) {
                     this.aiTrainingData = this.aiTrainingData.slice(0, this.aiTrainingSize);
                     this.saveAITrainingDataToLocalStorage();
@@ -455,7 +497,10 @@ class LightningDiceApp {
             const predLowMidGroup = this.extractPredictionGroup(predLowMid);
             const predMidHighGroup = this.extractPredictionGroup(predMidHigh);
             
-            const time = currentResult.timestamp.toLocaleTimeString();
+            // SAFE: timestamp is already a Date object from parseHistoryGameData
+            const time = currentResult.timestamp instanceof Date ? 
+                currentResult.timestamp.toLocaleTimeString() : 
+                new Date(currentResult.timestamp).toLocaleTimeString();
             
             const historyEntry = {
                 id: `${currentResult.id}_${Date.now()}_${i}`,
@@ -496,7 +541,7 @@ class LightningDiceApp {
                 total: total,
                 group: this.getGroup(total),
                 multiplier: this.getMultiplierFromResult(item.data.result),
-                timestamp: new Date(item.data.settledAt),
+                timestamp: new Date(item.data.settledAt),  // This is a Date object
                 winners: item.totalWinners || 0,
                 payout: item.totalAmount || 0,
                 diceValues: diceValues,
@@ -670,11 +715,19 @@ class LightningDiceApp {
     }
     
     addToDisplayHistory(result, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup) {
-        const time = result.timestamp.toLocaleTimeString();
+        // SAFE: Get time string safely
+        let timeStr;
+        if (result.timestamp instanceof Date) {
+            timeStr = result.timestamp.toLocaleTimeString();
+        } else if (typeof result.timestamp === 'string') {
+            timeStr = new Date(result.timestamp).toLocaleTimeString();
+        } else {
+            timeStr = new Date().toLocaleTimeString();
+        }
         
         const historyEntry = {
             id: `${result.id}_${Date.now()}`,
-            time: time,
+            time: timeStr,
             dice: result.diceValues,
             total: result.total,
             actualGroup: result.group,
@@ -974,8 +1027,11 @@ class LightningDiceApp {
         tbody.innerHTML = numbers.map(item => {
             const group = this.getGroup(item.wheelResult);
             const groupClass = `group-${group.toLowerCase()}`;
-            const lastTime = item.lastOccurredAt ? new Date(item.lastOccurredAt) : null;
-            const timeAgo = lastTime ? this.getTimeAgo(lastTime) : 'Never';
+            let timeAgo = 'Never';
+            if (item.lastOccurredAt) {
+                const lastTime = item.lastOccurredAt instanceof Date ? item.lastOccurredAt : new Date(item.lastOccurredAt);
+                timeAgo = this.getTimeAgo(lastTime);
+            }
             const percentage = this.aiTrainingData.length > 0 ? Math.round((item.count / this.aiTrainingData.length) * 100) : 0;
             
             return `
@@ -1043,20 +1099,37 @@ class LightningDiceApp {
         const recentResults = this.aiTrainingData.slice(0, 10);
         resultsGrid.innerHTML = recentResults.map(result => {
             const isLightning = result.multiplier > 10;
-            const time = result.timestamp.toLocaleTimeString();
+            // SAFE: Get time string safely
+            let timeStr;
+            if (result.timestamp instanceof Date) {
+                timeStr = result.timestamp.toLocaleTimeString();
+            } else if (typeof result.timestamp === 'string') {
+                timeStr = new Date(result.timestamp).toLocaleTimeString();
+            } else {
+                timeStr = new Date().toLocaleTimeString();
+            }
             const groupIcon = this.groups[result.group]?.icon || '🎲';
             
             return `
                 <div class="result-card ${isLightning ? 'lightning' : ''}">
                     <div class="result-number">${groupIcon} ${result.total}</div>
                     <div class="result-multiplier">${result.multiplier}x</div>
-                    <div class="result-time">${time}</div>
+                    <div class="result-time">${timeStr}</div>
                     <div class="result-dice">${result.diceValues}</div>
                 </div>
             `;
         }).join('');
         
         if (this.latestResult) {
+            let payoutTimeStr;
+            if (this.latestResult.timestamp instanceof Date) {
+                payoutTimeStr = this.latestResult.timestamp.toLocaleTimeString();
+            } else if (typeof this.latestResult.timestamp === 'string') {
+                payoutTimeStr = new Date(this.latestResult.timestamp).toLocaleTimeString();
+            } else {
+                payoutTimeStr = new Date().toLocaleTimeString();
+            }
+            
             resultsGrid.innerHTML += `
                 <div class="winners-info">
                     🏆 Winners: ${this.latestResult.winners} | 💰 Total Payout: $${this.latestResult.payout.toLocaleString()}
