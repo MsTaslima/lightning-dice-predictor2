@@ -42,7 +42,6 @@ const getApiHeaders = () => {
 
 // Stats API with cache
 app.get('/api/stats', asyncHandler(async (req, res) => {
-    // Check cache first
     if (statsCache && statsCacheTime && (Date.now() - statsCacheTime < CACHE_DURATION)) {
         console.log('📊 Serving stats from cache');
         return res.json(statsCache);
@@ -96,6 +95,45 @@ app.get('/api/latest', asyncHandler(async (req, res) => {
     }
 }));
 
+// ✅ NEW: Full History API with pagination
+app.get('/api/history', asyncHandler(async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 0;
+        const size = Math.min(parseInt(req.query.size) || 100, 200);
+        const duration = req.query.duration || 24;
+        
+        console.log(`📜 Fetching history page ${page} with size ${size}...`);
+        
+        const response = await axios.get(
+            'https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice',
+            {
+                params: {
+                    page: page,
+                    size: size,
+                    sort: 'data.settledAt,desc',
+                    duration: duration,
+                    totals: '3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18'
+                },
+                headers: getApiHeaders(),
+                timeout: 15000
+            }
+        );
+        
+        // Forward total count header
+        const totalCount = response.headers['x-total-count'];
+        if (totalCount) {
+            res.set('X-Total-Count', totalCount);
+        }
+        
+        console.log(`✅ Fetched ${response.data.length} records. Total available: ${totalCount || 'unknown'}`);
+        res.json(response.data);
+        
+    } catch (error) {
+        console.error('❌ Error fetching history:', error.message);
+        res.status(500).json({ error: 'Failed to fetch history', message: error.message });
+    }
+}));
+
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ 
@@ -122,9 +160,6 @@ app.get('/api/test', asyncHandler(async (req, res) => {
 }));
 
 // ============ KEEP-ALIVE FUNCTION FOR RAILWAY ============
-// This prevents Railway from sleeping the free tier
-// Pings the health endpoint every 5 minutes
-
 const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 setInterval(async () => {
@@ -133,12 +168,10 @@ setInterval(async () => {
         const host = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${PORT}`;
         const url = `${protocol}://${host}/api/health`;
         
-        // Only ping if we have a public domain (deployed on Railway)
         if (process.env.RAILWAY_PUBLIC_DOMAIN) {
             const response = await axios.get(url, { timeout: 5000 });
             console.log(`🔄 Keep-alive ping sent at ${new Date().toISOString()} - Status: ${response.status}`);
         } else {
-            // Local development - just log
             console.log(`💤 Keep-alive active (local mode) - ${new Date().toISOString()}`);
         }
     } catch (error) {
@@ -159,10 +192,11 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor - Three AI Pattern System`);
+    console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`📊 Stats API: http://localhost:${PORT}/api/stats`);
     console.log(`🔄 Latest API: http://localhost:${PORT}/api/latest`);
+    console.log(`📜 History API: http://localhost:${PORT}/api/history`);
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
     console.log(`🔧 Test API: http://localhost:${PORT}/api/test`);
     console.log(`🚀 Server running on port ${PORT}\n`);
