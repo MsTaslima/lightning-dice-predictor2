@@ -15,9 +15,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static('public'));
 
-let statsCache = null;
-let statsCacheTime = null;
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+// Removed statsCache - no longer using /stats API
 
 const asyncHandler = (fn) => (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
@@ -40,46 +38,13 @@ const getApiHeaders = () => {
     };
 };
 
-// Stats API with cache
+// STATS API - COMMENTED OUT (not needed for training)
+/*
 app.get('/api/stats', asyncHandler(async (req, res) => {
-    if (statsCache && statsCacheTime && (Date.now() - statsCacheTime < CACHE_DURATION)) {
-        console.log('📊 Serving stats from cache');
-        return res.json(statsCache);
-    }
-
-    console.log('🔄 Fetching fresh stats data...');
-    
-    try {
-        const response = await axios.get('https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice/stats', {
-            params: {
-                duration: req.query.duration || 24,
-                sortField: req.query.sortField || 'hotFrequency'
-            },
-            headers: getApiHeaders(),
-            timeout: 15000,
-            validateStatus: function (status) {
-                return status >= 200 && status < 500;
-            }
-        });
-        
-        if (response.data && response.data.totalStats) {
-            statsCache = response.data;
-            statsCacheTime = Date.now();
-            console.log('✅ Stats data cached for 24 hours');
-            res.json(response.data);
-        } else {
-            console.error('❌ Invalid response from API');
-            res.status(500).json({ error: 'Invalid API response', data: response.data });
-        }
-    } catch (error) {
-        console.error('❌ Error fetching stats:', error.message);
-        if (statsCache) {
-            console.log('⚠️ Returning expired cache due to API error');
-            return res.json({ ...statsCache, fromCache: true, cacheExpired: true });
-        }
-        res.status(500).json({ error: 'Failed to fetch stats', message: error.message });
-    }
+    // This endpoint is disabled as per requirement
+    res.json({ message: 'Stats API disabled - using history API for training' });
 }));
+*/
 
 // Latest result API
 app.get('/api/latest', asyncHandler(async (req, res) => {
@@ -95,11 +60,11 @@ app.get('/api/latest', asyncHandler(async (req, res) => {
     }
 }));
 
-// ✅ NEW: Full History API with pagination
+// Full History API with pagination - SUPPORTS UP TO 200 RECORDS PER PAGE
 app.get('/api/history', asyncHandler(async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 0;
-        const size = Math.min(parseInt(req.query.size) || 100, 200);
+        const size = Math.min(parseInt(req.query.size) || 200, 200); // Max 200 per page
         const duration = req.query.duration || 24;
         
         console.log(`📜 Fetching history page ${page} with size ${size}...`);
@@ -139,7 +104,6 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        cacheActive: statsCache ? true : false,
         uptime: process.uptime(),
         nodeVersion: process.version,
         environment: process.env.NODE_ENV || 'production'
@@ -159,7 +123,16 @@ app.get('/api/test', asyncHandler(async (req, res) => {
     }
 }));
 
-// ============ KEEP-ALIVE FUNCTION FOR RAILWAY ============
+// AI Accuracy API - NEW
+app.get('/api/ai/accuracy', (req, res) => {
+    // This will be populated by frontend, server just returns placeholder
+    res.json({ 
+        message: 'AI accuracy data is stored in browser localStorage',
+        endpoint: '/api/ai/accuracy is for reference only'
+    });
+});
+
+// Keep-alive function
 const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 setInterval(async () => {
@@ -194,11 +167,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System`);
     console.log(`📍 http://localhost:${PORT}`);
-    console.log(`📊 Stats API: http://localhost:${PORT}/api/stats`);
     console.log(`🔄 Latest API: http://localhost:${PORT}/api/latest`);
     console.log(`📜 History API: http://localhost:${PORT}/api/history`);
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
-    console.log(`🔧 Test API: http://localhost:${PORT}/api/test`);
     console.log(`🚀 Server running on port ${PORT}\n`);
-    console.log(`⏰ Keep-alive will ping every 5 minutes to prevent sleeping\n`);
 });
