@@ -17,7 +17,7 @@ class LightningDiceApp {
         // History tracking
         this.predictionHistory = [];
         this.currentPage = 1;
-        this.itemsPerPage = 20;
+        this.itemsPerPage = 10;
         this.maxHistorySize = 1000;
         
         // Group definitions
@@ -32,6 +32,10 @@ class LightningDiceApp {
     
     async init() {
         console.log('🚀 Initializing Four AI Pattern System...');
+        
+        // ✅ localStorage থেকে আগের হিস্টোরি লোড করুন
+        this.loadHistoryFromLocalStorage();
+        
         this.bindEvents();
         
         await this.loadBaseData();
@@ -48,6 +52,34 @@ class LightningDiceApp {
         this.startTimer();
         this.updateConnectionStatus(true);
         this.setupCollapsibleStats();
+    }
+    
+    // ✅ localStorage থেকে হিস্টোরি লোড করুন
+    loadHistoryFromLocalStorage() {
+        try {
+            const saved = localStorage.getItem('prediction_history');
+            if (saved) {
+                this.predictionHistory = JSON.parse(saved);
+                console.log(`✅ Loaded ${this.predictionHistory.length} history records from localStorage`);
+                this.updateHistoryTable();
+            } else {
+                console.log('📭 No saved history found in localStorage');
+            }
+        } catch(e) {
+            console.warn('Failed to load history from localStorage:', e);
+            this.predictionHistory = [];
+        }
+    }
+    
+    // ✅ localStorage এ হিস্টোরি সেভ করুন
+    saveHistoryToLocalStorage() {
+        try {
+            const toSave = this.predictionHistory.slice(0, this.maxHistorySize);
+            localStorage.setItem('prediction_history', JSON.stringify(toSave));
+            console.log(`✅ Saved ${toSave.length} history records to localStorage`);
+        } catch(e) {
+            console.warn('Failed to save history to localStorage:', e);
+        }
     }
     
     setupCollapsibleStats() {
@@ -298,7 +330,6 @@ class LightningDiceApp {
                 
                 const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
                 
-                // Get prediction groups
                 const predStickGroup = this.extractPredictionGroup(predStick);
                 const predExtremeGroup = this.extractPredictionGroup(predExtreme);
                 const predLowMidGroup = this.extractPredictionGroup(predLowMid);
@@ -313,7 +344,6 @@ class LightningDiceApp {
                 
                 if (this.allResults.length > 500) this.allResults.pop();
                 
-                // Update AI models with new result
                 if (window.AI_Stick) window.AI_Stick.updateWithResult(gameResult, previousGroup);
                 if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.updateWithResult(gameResult, previousGroup);
                 if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.updateWithResult(gameResult, previousGroup);
@@ -340,15 +370,12 @@ class LightningDiceApp {
     extractPredictionGroup(prediction) {
         if (!prediction) return 'MEDIUM';
         
-        // For Stick AI
         if (prediction.prediction === "STICK" && prediction.nextGroup) {
             return prediction.nextGroup;
         }
         if (prediction.prediction === "SWITCH" && prediction.nextGroup) {
             return prediction.nextGroup;
         }
-        
-        // For Switch AIs
         if (prediction.prediction === "CONTINUE" && prediction.pattern) {
             const parts = prediction.pattern.split("→");
             if (parts.length >= 2) {
@@ -362,6 +389,7 @@ class LightningDiceApp {
         return 'MEDIUM';
     }
     
+    // ✅ আপডেটেড addToHistory - localStorage এ সেভ করে
     addToHistory(result, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup) {
         const time = result.timestamp.toLocaleTimeString();
         
@@ -384,7 +412,13 @@ class LightningDiceApp {
         };
         
         this.predictionHistory.unshift(historyEntry);
-        if (this.predictionHistory.length > this.maxHistorySize) this.predictionHistory.pop();
+        
+        if (this.predictionHistory.length > this.maxHistorySize) {
+            this.predictionHistory.pop();
+        }
+        
+        // ✅ localStorage এ সেভ করুন
+        this.saveHistoryToLocalStorage();
         
         this.updateHistoryTable();
     }
@@ -468,7 +502,6 @@ class LightningDiceApp {
         
         const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
         
-        // Update AI-A (Stick) UI
         if (predStick) {
             document.getElementById('aiStickInput').textContent = `${previousGroup} → ${currentGroup}`;
             const stickPredText = predStick.prediction === "STICK" ? 
@@ -478,7 +511,6 @@ class LightningDiceApp {
             document.getElementById('aiStickAcc').textContent = `${predStick.accuracy.toFixed(1)}%`;
         }
         
-        // Update AI-B (Extreme Switch) UI
         if (predExtreme) {
             document.getElementById('aiExtremeInput').textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
             let extremePredText = '';
@@ -499,7 +531,6 @@ class LightningDiceApp {
             document.getElementById('aiExtremeAcc').textContent = `${predExtreme.accuracy.toFixed(1)}%`;
         }
         
-        // Update AI-C (Low-Mid Switch) UI
         if (predLowMid) {
             document.getElementById('aiLowMidInput').textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
             let lowMidPredText = '';
@@ -520,7 +551,6 @@ class LightningDiceApp {
             document.getElementById('aiLowMidAcc').textContent = `${predLowMid.accuracy.toFixed(1)}%`;
         }
         
-        // Update AI-D (Mid-High Switch) UI
         if (predMidHigh) {
             document.getElementById('aiMidHighInput').textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
             let midHighPredText = '';
@@ -541,7 +571,6 @@ class LightningDiceApp {
             document.getElementById('aiMidHighAcc').textContent = `${predMidHigh.accuracy.toFixed(1)}%`;
         }
         
-        // Update Ensemble UI
         if (ensemble) {
             const agreement = ensemble.final.agreement;
             document.getElementById('voteCount').textContent = `(${agreement}/4 AI agree)`;
