@@ -1,7 +1,7 @@
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller - Four AI Models
- * UPDATED: Fixed missing element errors
+ * WITH SERVER STORAGE (No Data Merging - Clean Version)
  */
 
 class LightningDiceApp {
@@ -32,8 +32,11 @@ class LightningDiceApp {
         
         // Pagination for display
         this.currentPage = 1;
-        this.itemsPerPage =10;
+        this.itemsPerPage = 10;
         this.isLoadingHistory = false;
+        
+        // Server sync flag (no merging, just sync)
+        this.syncInProgress = false;
         
         // Group definitions
         this.groups = {
@@ -46,7 +49,7 @@ class LightningDiceApp {
     }
     
     async init() {
-        console.log('🚀 Initializing Four AI Pattern System...');
+        console.log('🚀 Initializing Four AI Pattern System with Server Storage...');
         console.log(`🤖 AI Training Storage: ${this.aiTrainingSize} records (background)`);
         console.log(`📊 Display History: ${this.displayHistorySize} records (UI)`);
         
@@ -54,8 +57,15 @@ class LightningDiceApp {
         this.loadAITrainingDataFromLocalStorage();
         this.bindEvents();
         
-        await this.loadFullHistoryFromAPI();
+        // 🔥 Load from server (NO MERGING - just load what server has)
+        await this.loadFromServer();
         
+        // If server has no data, load from API
+        if (this.aiTrainingData.length === 0) {
+            await this.loadFullHistoryFromAPI();
+        }
+        
+        // Train AI models with complete data
         if (this.aiTrainingData.length >= 10) {
             await this.trainAllModels();
             this.lastRetrainTime = new Date();
@@ -71,7 +81,152 @@ class LightningDiceApp {
         this.updateConnectionStatus(true);
         this.setupCollapsibleStats();
         this.updateDataSizeIndicator();
+        
+        // Periodic server sync every 5 minutes
+        this.startPeriodicServerSync();
     }
+    
+    // ========== SERVER STORAGE METHODS (NO MERGING) ==========
+    
+    async syncTrainingDataToServer() {
+        if (this.syncInProgress) return;
+        this.syncInProgress = true;
+        try {
+            const response = await fetch('/api/server/save-training', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: this.aiTrainingData, maxSize: this.aiTrainingSize })
+            });
+            const result = await response.json();
+            if (result.success) {
+                console.log(`✅ Synced ${result.count} training records to server`);
+            }
+        } catch (e) {
+            console.warn('Failed to sync training data to server:', e);
+        } finally {
+            this.syncInProgress = false;
+        }
+    }
+    
+    async syncHistoryToServer() {
+        try {
+            const response = await fetch('/api/server/save-history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: this.predictionHistory, maxSize: this.displayHistorySize })
+            });
+            const result = await response.json();
+            if (result.success) {
+                console.log(`✅ Synced ${result.count} history records to server`);
+            }
+        } catch (e) {
+            console.warn('Failed to sync history to server:', e);
+        }
+    }
+    
+    async syncAIModelsToServer() {
+        try {
+            const modelsData = {
+                stick: localStorage.getItem('ai_stick_data'),
+                extremeSwitch: localStorage.getItem('ai_extreme_switch_data'),
+                lowMidSwitch: localStorage.getItem('ai_low_mid_switch_data'),
+                midHighSwitch: localStorage.getItem('ai_mid_high_switch_data'),
+                ensembleWeights: localStorage.getItem('ensemble_v4_weights')
+            };
+            
+            const response = await fetch('/api/server/save-models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(modelsData)
+            });
+            const result = await response.json();
+            if (result.success) {
+                console.log(`✅ Synced AI models data to server`);
+            }
+        } catch (e) {
+            console.warn('Failed to sync AI models:', e);
+        }
+    }
+    
+    // SIMPLIFIED: Just load from server, no merging logic
+    async loadFromServer() {
+        try {
+            // Load training data from server
+            const trainingRes = await fetch('/api/server/get-training');
+            const trainingData = await trainingRes.json();
+            if (trainingData.success && trainingData.data && trainingData.data.length > 0) {
+                this.aiTrainingData = trainingData.data;
+                this.saveAITrainingDataToLocalStorage();
+                console.log(`✅ Loaded ${this.aiTrainingData.length} training records from server`);
+            } else {
+                console.log('📭 No training data on server, will load from API');
+            }
+            
+            // Load history data from server
+            const historyRes = await fetch('/api/server/get-history');
+            const historyData = await historyRes.json();
+            if (historyData.success && historyData.data && historyData.data.length > 0) {
+                this.predictionHistory = historyData.data;
+                this.saveDisplayHistoryToLocalStorage();
+                this.updateHistoryTable();
+                console.log(`✅ Loaded ${this.predictionHistory.length} history records from server`);
+            }
+            
+            // Load AI models data from server
+            const modelsRes = await fetch('/api/server/get-models');
+            const modelsData = await modelsRes.json();
+            if (modelsData.success && modelsData.data) {
+                if (modelsData.data.stick) {
+                    localStorage.setItem('ai_stick_data', modelsData.data.stick);
+                }
+                if (modelsData.data.extremeSwitch) {
+                    localStorage.setItem('ai_extreme_switch_data', modelsData.data.extremeSwitch);
+                }
+                if (modelsData.data.lowMidSwitch) {
+                    localStorage.setItem('ai_low_mid_switch_data', modelsData.data.lowMidSwitch);
+                }
+                if (modelsData.data.midHighSwitch) {
+                    localStorage.setItem('ai_mid_high_switch_data', modelsData.data.midHighSwitch);
+                }
+                if (modelsData.data.ensembleWeights) {
+                    localStorage.setItem('ensemble_v4_weights', modelsData.data.ensembleWeights);
+                }
+                console.log(`✅ Loaded AI models data from server`);
+            }
+            
+            this.updateDataSizeIndicator();
+        } catch (e) {
+            console.warn('Failed to load from server, using local storage:', e);
+        }
+    }
+    
+    async clearServerHistory() {
+        try {
+            const response = await fetch('/api/server/clear-history', {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            if (result.success) {
+                console.log('✅ Server history cleared');
+                return true;
+            }
+        } catch (e) {
+            console.warn('Failed to clear server history:', e);
+        }
+        return false;
+    }
+    
+    startPeriodicServerSync() {
+        setInterval(async () => {
+            console.log('🔄 Periodic server sync starting...');
+            await this.syncTrainingDataToServer();
+            await this.syncHistoryToServer();
+            await this.syncAIModelsToServer();
+            console.log('✅ Periodic server sync complete');
+        }, 5 * 60 * 1000); // Every 5 minutes
+    }
+    
+    // ========== ORIGINAL METHODS ==========
     
     loadDisplayHistoryFromLocalStorage() {
         try {
@@ -112,6 +267,7 @@ class LightningDiceApp {
         try {
             const toSave = this.predictionHistory.slice(0, this.displayHistorySize);
             localStorage.setItem('prediction_history_display', JSON.stringify(toSave));
+            this.syncHistoryToServer();
         } catch(e) {
             console.warn('Failed to save display history:', e);
         }
@@ -121,19 +277,21 @@ class LightningDiceApp {
         try {
             const toSave = this.aiTrainingData.slice(0, this.aiTrainingSize);
             localStorage.setItem('ai_training_data', JSON.stringify(toSave));
+            this.syncTrainingDataToServer();
         } catch(e) {
             console.warn('Failed to save AI training data:', e);
         }
     }
     
     clearDisplayHistory() {
-        if (confirm('Are you sure you want to clear ALL prediction history? This will only clear the display (UI) history. AI training data will remain intact.')) {
+        if (confirm('Are you sure you want to clear ALL prediction history? This will clear from ALL devices (mobile, computer, etc.)')) {
             this.predictionHistory = [];
             this.saveDisplayHistoryToLocalStorage();
+            this.clearServerHistory();
             this.currentPage = 1;
             this.updateHistoryTable();
             this.updatePaginationControls();
-            console.log('🗑️ Display history cleared!');
+            console.log('🗑️ Display history cleared from all devices!');
             
             const clearBtn = document.getElementById('clearHistoryBtn');
             if (clearBtn) {
@@ -379,6 +537,9 @@ class LightningDiceApp {
         this.recordsSinceLastRetrain = 0;
         this.lastRetrainTime = new Date();
         this.updateDataSizeIndicator();
+        
+        await this.syncAIModelsToServer();
+        
         console.log('✅ All 4 AI models trained!');
     }
     
@@ -806,7 +967,7 @@ class LightningDiceApp {
         }
         
         if (numbers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5">No data available</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5">No data available</td>' + '</tr>';
             return;
         }
         
