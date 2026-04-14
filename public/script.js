@@ -1,7 +1,7 @@
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller - Four AI Models
- * UPDATED: 20,000 AI training storage + 1,000 display history + Clear button
+ * UPDATED: Fixed missing element errors
  */
 
 class LightningDiceApp {
@@ -10,12 +10,12 @@ class LightningDiceApp {
         this.baseStats = null;
         
         // 🤖 AI TRAINING STORAGE (Background - 20,000 records)
-        this.aiTrainingData = [];        // AI ট্রেনিং এর জন্য (20,000 capacity)
-        this.aiTrainingSize = 20000;     // ২০,০০০ রেকর্ড স্টোর করবে (ব্যাকগ্রাউন্ড)
+        this.aiTrainingData = [];
+        this.aiTrainingSize = 20000;
         
         // 📊 UI DISPLAY HISTORY (User sees - 1,000 records only)
-        this.predictionHistory = [];      // ইউজার দেখে (1,000 capacity)
-        this.displayHistorySize = 1000;   // শুধু লাস্ট ১০০০ দেখাবে
+        this.predictionHistory = [];
+        this.displayHistorySize = 1000;
         
         // Other variables
         this.lastGameId = null;
@@ -26,13 +26,13 @@ class LightningDiceApp {
         
         // Retraining tracking
         this.recordsSinceLastRetrain = 0;
-        this.retrainThreshold = 100;      // প্রতি ১০০ নতুন রেকর্ডে রি-ট্রেন
+        this.retrainThreshold = 100;
         this.lastRetrainTime = null;
         this.retrainInterval = null;
         
         // Pagination for display
         this.currentPage = 1;
-        this.itemsPerPage = 10;
+        this.itemsPerPage =10;
         this.isLoadingHistory = false;
         
         // Group definitions
@@ -54,10 +54,8 @@ class LightningDiceApp {
         this.loadAITrainingDataFromLocalStorage();
         this.bindEvents();
         
-        // Load ALL history data from API
         await this.loadFullHistoryFromAPI();
         
-        // Train AI models with complete data
         if (this.aiTrainingData.length >= 10) {
             await this.trainAllModels();
             this.lastRetrainTime = new Date();
@@ -75,13 +73,11 @@ class LightningDiceApp {
         this.updateDataSizeIndicator();
     }
     
-    // ✅ Load ONLY display history (1,000 records) from localStorage
     loadDisplayHistoryFromLocalStorage() {
         try {
             const saved = localStorage.getItem('prediction_history_display');
             if (saved) {
                 this.predictionHistory = JSON.parse(saved);
-                // Ensure not exceed display limit
                 if (this.predictionHistory.length > this.displayHistorySize) {
                     this.predictionHistory = this.predictionHistory.slice(0, this.displayHistorySize);
                     this.saveDisplayHistoryToLocalStorage();
@@ -95,7 +91,6 @@ class LightningDiceApp {
         }
     }
     
-    // ✅ Load AI training data (20,000 records) from localStorage
     loadAITrainingDataFromLocalStorage() {
         try {
             const saved = localStorage.getItem('ai_training_data');
@@ -113,29 +108,24 @@ class LightningDiceApp {
         }
     }
     
-    // ✅ Save ONLY display history
     saveDisplayHistoryToLocalStorage() {
         try {
             const toSave = this.predictionHistory.slice(0, this.displayHistorySize);
             localStorage.setItem('prediction_history_display', JSON.stringify(toSave));
-            console.log(`✅ Saved ${toSave.length} display records to localStorage`);
         } catch(e) {
             console.warn('Failed to save display history:', e);
         }
     }
     
-    // ✅ Save AI training data (20,000 records)
     saveAITrainingDataToLocalStorage() {
         try {
             const toSave = this.aiTrainingData.slice(0, this.aiTrainingSize);
             localStorage.setItem('ai_training_data', JSON.stringify(toSave));
-            console.log(`✅ Saved ${toSave.length} AI training records to localStorage`);
         } catch(e) {
             console.warn('Failed to save AI training data:', e);
         }
     }
     
-    // ✅ CLEAR BUTTON FUNCTION - clears display history only
     clearDisplayHistory() {
         if (confirm('Are you sure you want to clear ALL prediction history? This will only clear the display (UI) history. AI training data will remain intact.')) {
             this.predictionHistory = [];
@@ -145,7 +135,6 @@ class LightningDiceApp {
             this.updatePaginationControls();
             console.log('🗑️ Display history cleared!');
             
-            // Show temporary message
             const clearBtn = document.getElementById('clearHistoryBtn');
             if (clearBtn) {
                 const originalText = clearBtn.innerHTML;
@@ -154,23 +143,6 @@ class LightningDiceApp {
                     clearBtn.innerHTML = originalText;
                 }, 2000);
             }
-        }
-    }
-    
-    // ✅ Clear ALL data (AI training + display) - for debugging
-    clearAllData() {
-        if (confirm('⚠️ WARNING: This will clear ALL data including AI training. Are you sure?')) {
-            this.predictionHistory = [];
-            this.aiTrainingData = [];
-            localStorage.removeItem('prediction_history_display');
-            localStorage.removeItem('ai_training_data');
-            localStorage.removeItem('ai_stick_data');
-            localStorage.removeItem('ai_extreme_switch_data');
-            localStorage.removeItem('ai_low_mid_switch_data');
-            localStorage.removeItem('ai_mid_high_switch_data');
-            localStorage.removeItem('ensemble_v4_weights');
-            console.log('🗑️ ALL data cleared!');
-            location.reload();
         }
     }
     
@@ -200,7 +172,7 @@ class LightningDiceApp {
             statsHeader.addEventListener('click', () => {
                 const isVisible = statsContent.style.display !== 'none';
                 statsContent.style.display = isVisible ? 'none' : 'block';
-                toggleIcon.classList.toggle('open', !isVisible);
+                if (toggleIcon) toggleIcon.classList.toggle('open', !isVisible);
             });
         }
     }
@@ -244,7 +216,6 @@ class LightningDiceApp {
         }
     }
     
-    // ✅ Load ALL pages from history API (for AI training)
     async loadFullHistoryFromAPI() {
         if (this.isLoadingHistory) return;
         this.isLoadingHistory = true;
@@ -252,21 +223,16 @@ class LightningDiceApp {
         try {
             console.log('📜 Loading complete history from API for AI training...');
             
-            // Fetch first page to get total count
             const firstResponse = await fetch(`${this.apiBase}/history?page=0&size=200`);
             const totalCount = parseInt(firstResponse.headers.get('X-Total-Count') || '0');
             const firstPageData = await firstResponse.json();
             
             let allApiResults = [...firstPageData];
-            console.log(`📊 Total records available in 24h: ${totalCount}`);
+            console.log(`📊 Total records available: ${totalCount}`);
             
-            // Calculate how many pages we need (max AI training size)
             const recordsNeeded = Math.min(totalCount, this.aiTrainingSize);
             const pagesNeeded = Math.ceil(recordsNeeded / 200);
             
-            console.log(`📚 Will fetch ${pagesNeeded} pages (${recordsNeeded} records for AI training)`);
-            
-            // Fetch remaining pages
             for (let page = 1; page < pagesNeeded && page < 100; page++) {
                 console.log(`📜 Fetching page ${page}...`);
                 const response = await fetch(`${this.apiBase}/history?page=${page}&size=200`);
@@ -274,13 +240,9 @@ class LightningDiceApp {
                 allApiResults.push(...pageData);
                 await new Promise(resolve => setTimeout(resolve, 150));
                 
-                if (allApiResults.length >= this.aiTrainingSize) {
-                    console.log(`📦 Reached AI training capacity (${this.aiTrainingSize}), stopping fetch`);
-                    break;
-                }
+                if (allApiResults.length >= this.aiTrainingSize) break;
             }
             
-            // Convert API results to game result format
             const gameResults = [];
             const seenIds = new Set();
             
@@ -293,7 +255,6 @@ class LightningDiceApp {
             
             gameResults.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
             
-            // Store in AI training storage (20,000 capacity)
             this.aiTrainingData = gameResults.slice(0, this.aiTrainingSize);
             this.saveAITrainingDataToLocalStorage();
             
@@ -303,9 +264,7 @@ class LightningDiceApp {
                 this.lastGameId = this.aiTrainingData[0].id;
             }
             
-            // Build display history from real data (only last 1000)
             await this.buildDisplayHistoryFromRealData();
-            
             this.updateDataSizeIndicator();
             
         } catch (error) {
@@ -315,7 +274,6 @@ class LightningDiceApp {
         }
     }
     
-    // ✅ Build ONLY display history (last 1000)
     async buildDisplayHistoryFromRealData() {
         console.log('🔨 Building display history (last 1000 records)...');
         
@@ -326,7 +284,6 @@ class LightningDiceApp {
             const currentResult = orderedResults[i];
             const previousResult = orderedResults[i - 1];
             
-            const lastResults = this.getLastNResultsFromHistory(orderedResults, i);
             const currentGroup = currentResult.group;
             const previousGroup = previousResult.group;
             
@@ -368,16 +325,7 @@ class LightningDiceApp {
         this.predictionHistory = newDisplayHistory.slice(0, this.displayHistorySize);
         this.saveDisplayHistoryToLocalStorage();
         this.updateHistoryTable();
-        console.log(`✅ Display History: ${this.predictionHistory.length} records (last 1000)`);
-    }
-    
-    getLastNResultsFromHistory(history, currentIndex) {
-        const start = Math.max(0, currentIndex - 4);
-        const results = [];
-        for (let i = start; i < currentIndex; i++) {
-            results.push(history[i].group);
-        }
-        return results;
+        console.log(`✅ Display History: ${this.predictionHistory.length} records`);
     }
     
     parseHistoryGameData(item) {
@@ -410,39 +358,6 @@ class LightningDiceApp {
         return 1;
     }
     
-    async fetchNewRecordsFromAPI() {
-        try {
-            const response = await fetch(`${this.apiBase}/history?page=0&size=50`);
-            const newRecords = await response.json();
-            
-            let newCount = 0;
-            const existingIds = new Set(this.aiTrainingData.map(r => r.id));
-            
-            for (const item of newRecords) {
-                if (!existingIds.has(item.id)) {
-                    const gameResult = this.parseHistoryGameData(item);
-                    if (gameResult) {
-                        this.aiTrainingData.unshift(gameResult);
-                        newCount++;
-                    }
-                }
-            }
-            
-            if (this.aiTrainingData.length > this.aiTrainingSize) {
-                this.aiTrainingData = this.aiTrainingData.slice(0, this.aiTrainingSize);
-            }
-            
-            if (newCount > 0) {
-                console.log(`🆕 Found ${newCount} new records from API`);
-                this.saveAITrainingDataToLocalStorage();
-                await this.buildDisplayHistoryFromRealData();
-                this.updateDataSizeIndicator();
-            }
-        } catch (error) {
-            console.warn('Could not fetch new records:', error.message);
-        }
-    }
-    
     async trainAllModels() {
         console.log(`🎓 Training all 4 AI models with ${this.aiTrainingData.length} records...`);
         
@@ -469,7 +384,7 @@ class LightningDiceApp {
     
     startPeriodicRetrain() {
         this.retrainInterval = setInterval(async () => {
-            console.log('⏰ Periodic retrain triggered (2 hour interval)...');
+            console.log('⏰ Periodic retrain triggered...');
             await this.fullRetrain();
         }, 2 * 60 * 60 * 1000);
     }
@@ -487,7 +402,7 @@ class LightningDiceApp {
     async checkAndRetrain() {
         this.recordsSinceLastRetrain++;
         if (this.recordsSinceLastRetrain >= this.retrainThreshold) {
-            console.log(`📊 Retrain threshold reached (${this.recordsSinceLastRetrain} new records), retraining...`);
+            console.log(`📊 Retrain threshold reached, retraining...`);
             await this.fullRetrain();
         }
     }
@@ -556,10 +471,8 @@ class LightningDiceApp {
                 const predMidHighGroup = this.extractPredictionGroup(predMidHigh);
                 const ensembleGroup = ensemble?.final?.group || 'MEDIUM';
                 
-                // Add to display history (with auto-limit)
                 this.addToDisplayHistory(gameResult, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup);
                 
-                // Add to AI training storage
                 this.aiTrainingData.unshift(gameResult);
                 this.lastGameId = gameResult.id;
                 this.latestResult = gameResult;
@@ -570,19 +483,17 @@ class LightningDiceApp {
                 
                 this.saveAITrainingDataToLocalStorage();
                 
-                // Update AI models incrementally
                 if (window.AI_Stick) window.AI_Stick.updateWithResult(gameResult, previousGroup);
                 if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.updateWithResult(gameResult, previousGroup);
                 if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.updateWithResult(gameResult, previousGroup);
                 if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.updateWithResult(gameResult, previousGroup);
                 
                 if (ensemble) {
-                    const correct = ensemble.final.group === gameResult.group;
                     if (window.AI_Stick) window.AI_Stick.recordPredictionResult(predStickGroup === gameResult.group);
                     if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.recordPredictionResult(predExtremeGroup === gameResult.group);
                     if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.recordPredictionResult(predLowMidGroup === gameResult.group);
                     if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.recordPredictionResult(predMidHighGroup === gameResult.group);
-                    if (window.EnsembleVoterV4) window.EnsembleVoterV4.recordPredictionResult(correct);
+                    if (window.EnsembleVoterV4) window.EnsembleVoterV4.recordPredictionResult(ensemble.final.group === gameResult.group);
                 }
                 
                 this.updateUI();
@@ -597,7 +508,6 @@ class LightningDiceApp {
         }
     }
     
-    // ✅ Add to display history only (with auto-limit)
     addToDisplayHistory(result, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup) {
         const time = result.timestamp.toLocaleTimeString();
         
@@ -625,10 +535,8 @@ class LightningDiceApp {
         if (!exists) {
             this.predictionHistory.unshift(historyEntry);
             
-            // ✅ Auto-remove old records when exceeds 1000
             if (this.predictionHistory.length > this.displayHistorySize) {
                 this.predictionHistory.pop();
-                console.log(`📊 Auto-cleaned: Display history now at ${this.displayHistorySize} records`);
             }
             
             this.saveDisplayHistoryToLocalStorage();
@@ -656,7 +564,7 @@ class LightningDiceApp {
         const pageItems = this.predictionHistory.slice(startIndex, startIndex + this.itemsPerPage);
         
         if (pageItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8">No history data yet... Click "Clear History" to reset or wait for new data...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">No history data yet...</td></tr>';
             this.updatePaginationControls();
             return;
         }
@@ -720,16 +628,26 @@ class LightningDiceApp {
         
         const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
         
+        const aiStickInput = document.getElementById('aiStickInput');
+        const aiStickPred = document.getElementById('aiStickPred');
+        const aiStickConf = document.getElementById('aiStickConf');
+        const aiStickAcc = document.getElementById('aiStickAcc');
+        
         if (predStick) {
-            document.getElementById('aiStickInput').textContent = `${previousGroup} → ${currentGroup}`;
+            if (aiStickInput) aiStickInput.textContent = `${previousGroup} → ${currentGroup}`;
             const stickPredText = predStick.prediction === "STICK" ? `${predStick.nextGroup} (Stick)` : `Switch to ${predStick.nextGroup}`;
-            document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${stickPredText}`;
-            document.getElementById('aiStickConf').textContent = `${predStick.confidence}%`;
-            document.getElementById('aiStickAcc').textContent = `${predStick.accuracy.toFixed(1)}%`;
+            if (aiStickPred) aiStickPred.innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${stickPredText}`;
+            if (aiStickConf) aiStickConf.textContent = `${predStick.confidence}%`;
+            if (aiStickAcc) aiStickAcc.textContent = `${predStick.accuracy.toFixed(1)}%`;
         }
         
+        const aiExtremeInput = document.getElementById('aiExtremeInput');
+        const aiExtremePred = document.getElementById('aiExtremePred');
+        const aiExtremeConf = document.getElementById('aiExtremeConf');
+        const aiExtremeAcc = document.getElementById('aiExtremeAcc');
+        
         if (predExtreme) {
-            document.getElementById('aiExtremeInput').textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
+            if (aiExtremeInput) aiExtremeInput.textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
             let extremePredText = '';
             let extremeIcon = '';
             if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
@@ -743,13 +661,18 @@ class LightningDiceApp {
                 extremePredText = predExtreme.nextGroup || 'MEDIUM';
                 extremeIcon = this.getGroupIcon(extremePredText);
             }
-            document.getElementById('aiExtremePred').innerHTML = `${extremeIcon} ${extremePredText}`;
-            document.getElementById('aiExtremeConf').textContent = `${predExtreme.confidence}%`;
-            document.getElementById('aiExtremeAcc').textContent = `${predExtreme.accuracy.toFixed(1)}%`;
+            if (aiExtremePred) aiExtremePred.innerHTML = `${extremeIcon} ${extremePredText}`;
+            if (aiExtremeConf) aiExtremeConf.textContent = `${predExtreme.confidence}%`;
+            if (aiExtremeAcc) aiExtremeAcc.textContent = `${predExtreme.accuracy.toFixed(1)}%`;
         }
         
+        const aiLowMidInput = document.getElementById('aiLowMidInput');
+        const aiLowMidPred = document.getElementById('aiLowMidPred');
+        const aiLowMidConf = document.getElementById('aiLowMidConf');
+        const aiLowMidAcc = document.getElementById('aiLowMidAcc');
+        
         if (predLowMid) {
-            document.getElementById('aiLowMidInput').textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
+            if (aiLowMidInput) aiLowMidInput.textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
             let lowMidPredText = '';
             let lowMidIcon = '';
             if (predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
@@ -763,13 +686,18 @@ class LightningDiceApp {
                 lowMidPredText = predLowMid.nextGroup || 'MEDIUM';
                 lowMidIcon = this.getGroupIcon(lowMidPredText);
             }
-            document.getElementById('aiLowMidPred').innerHTML = `${lowMidIcon} ${lowMidPredText}`;
-            document.getElementById('aiLowMidConf').textContent = `${predLowMid.confidence}%`;
-            document.getElementById('aiLowMidAcc').textContent = `${predLowMid.accuracy.toFixed(1)}%`;
+            if (aiLowMidPred) aiLowMidPred.innerHTML = `${lowMidIcon} ${lowMidPredText}`;
+            if (aiLowMidConf) aiLowMidConf.textContent = `${predLowMid.confidence}%`;
+            if (aiLowMidAcc) aiLowMidAcc.textContent = `${predLowMid.accuracy.toFixed(1)}%`;
         }
         
+        const aiMidHighInput = document.getElementById('aiMidHighInput');
+        const aiMidHighPred = document.getElementById('aiMidHighPred');
+        const aiMidHighConf = document.getElementById('aiMidHighConf');
+        const aiMidHighAcc = document.getElementById('aiMidHighAcc');
+        
         if (predMidHigh) {
-            document.getElementById('aiMidHighInput').textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
+            if (aiMidHighInput) aiMidHighInput.textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
             let midHighPredText = '';
             let midHighIcon = '';
             if (predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
@@ -783,23 +711,32 @@ class LightningDiceApp {
                 midHighPredText = predMidHigh.nextGroup || 'HIGH';
                 midHighIcon = this.getGroupIcon(midHighPredText);
             }
-            document.getElementById('aiMidHighPred').innerHTML = `${midHighIcon} ${midHighPredText}`;
-            document.getElementById('aiMidHighConf').textContent = `${predMidHigh.confidence}%`;
-            document.getElementById('aiMidHighAcc').textContent = `${predMidHigh.accuracy.toFixed(1)}%`;
+            if (aiMidHighPred) aiMidHighPred.innerHTML = `${midHighIcon} ${midHighPredText}`;
+            if (aiMidHighConf) aiMidHighConf.textContent = `${predMidHigh.confidence}%`;
+            if (aiMidHighAcc) aiMidHighAcc.textContent = `${predMidHigh.accuracy.toFixed(1)}%`;
         }
+        
+        const voteCount = document.getElementById('voteCount');
+        const finalIcon = document.getElementById('finalIcon');
+        const finalName = document.getElementById('finalName');
+        const finalRange = document.getElementById('finalRange');
+        const confidenceFill = document.getElementById('confidenceFill');
+        const finalConfidence = document.getElementById('finalConfidence');
+        const finalExplanation = document.getElementById('finalExplanation');
+        const finalWeights = document.getElementById('finalWeights');
         
         if (ensemble) {
             const agreement = ensemble.final.agreement;
-            document.getElementById('voteCount').textContent = `(${agreement}/4 AI agree)`;
-            document.getElementById('finalIcon').textContent = this.getGroupIcon(ensemble.final.group);
-            document.getElementById('finalName').textContent = ensemble.final.group;
-            document.getElementById('finalRange').textContent = `(${this.getGroupRange(ensemble.final.group)})`;
-            document.getElementById('confidenceFill').style.width = `${ensemble.final.confidence}%`;
-            document.getElementById('finalConfidence').textContent = `${ensemble.final.confidence}%`;
-            document.getElementById('finalExplanation').textContent = ensemble.explanation;
+            if (voteCount) voteCount.textContent = `(${agreement}/4 AI agree)`;
+            if (finalIcon) finalIcon.textContent = this.getGroupIcon(ensemble.final.group);
+            if (finalName) finalName.textContent = ensemble.final.group;
+            if (finalRange) finalRange.textContent = `(${this.getGroupRange(ensemble.final.group)})`;
+            if (confidenceFill) confidenceFill.style.width = `${ensemble.final.confidence}%`;
+            if (finalConfidence) finalConfidence.textContent = `${ensemble.final.confidence}%`;
+            if (finalExplanation) finalExplanation.textContent = ensemble.explanation;
             
             const weights = ensemble.weights;
-            document.getElementById('finalWeights').innerHTML = `Weights: Stick ${(weights.stick*100).toFixed(0)}% | Extreme ${(weights.extremeSwitch*100).toFixed(0)}% | Low-Mid ${(weights.lowMidSwitch*100).toFixed(0)}% | Mid-High ${(weights.midHighSwitch*100).toFixed(0)}%`;
+            if (finalWeights) finalWeights.innerHTML = `Weights: Stick ${(weights.stick*100).toFixed(0)}% | Extreme ${(weights.extremeSwitch*100).toFixed(0)}% | Low-Mid ${(weights.lowMidSwitch*100).toFixed(0)}% | Mid-High ${(weights.midHighSwitch*100).toFixed(0)}%`;
         }
     }
     
@@ -819,12 +756,14 @@ class LightningDiceApp {
     
     updateStatsUI() {
         const totalCount = this.aiTrainingData.length;
-        document.getElementById('totalRounds').textContent = totalCount.toLocaleString();
+        const totalRoundsEl = document.getElementById('totalRounds');
+        if (totalRoundsEl) totalRoundsEl.textContent = totalCount.toLocaleString();
         
         let totalSum = 0;
         this.aiTrainingData.forEach(result => { totalSum += result.total; });
         const avgResult = totalCount > 0 ? (totalSum / totalCount).toFixed(2) : 0;
-        document.getElementById('avgResult').textContent = avgResult;
+        const avgResultEl = document.getElementById('avgResult');
+        if (avgResultEl) avgResultEl.textContent = avgResult;
         
         const groupCounts = { LOW: 0, MEDIUM: 0, HIGH: 0 };
         this.aiTrainingData.forEach(result => {
@@ -834,8 +773,14 @@ class LightningDiceApp {
         let mostActive = 'LOW', maxCount = groupCounts.LOW;
         if (groupCounts.MEDIUM > maxCount) { mostActive = 'MEDIUM'; maxCount = groupCounts.MEDIUM; }
         if (groupCounts.HIGH > maxCount) { mostActive = 'HIGH'; }
-        document.getElementById('mostActiveGroup').textContent = mostActive;
-        document.getElementById('lightningBoost').textContent = 'N/A';
+        const mostActiveEl = document.getElementById('mostActiveGroup');
+        if (mostActiveEl) mostActiveEl.textContent = mostActive;
+        
+        const lightningBoostEl = document.getElementById('lightningBoost');
+        if (lightningBoostEl) lightningBoostEl.textContent = 'N/A';
+        
+        const storageCapacityEl = document.getElementById('storageCapacity');
+        if (storageCapacityEl) storageCapacityEl.textContent = '20K/1K';
     }
     
     updateStatisticsTable() {
@@ -900,13 +845,21 @@ class LightningDiceApp {
         recentResults.forEach(r => { if (r && r.group) recentCount[r.group]++; });
         
         const total = recentResults.length;
-        document.getElementById('lowProb').textContent = `${Math.round((recentCount.LOW / total) * 100)}%`;
-        document.getElementById('mediumProb').textContent = `${Math.round((recentCount.MEDIUM / total) * 100)}%`;
-        document.getElementById('highProb').textContent = `${Math.round((recentCount.HIGH / total) * 100)}%`;
+        const lowProbEl = document.getElementById('lowProb');
+        const mediumProbEl = document.getElementById('mediumProb');
+        const highProbEl = document.getElementById('highProb');
         
-        document.getElementById('lowTrend').textContent = this.getTrendText(recentCount.LOW, total);
-        document.getElementById('mediumTrend').textContent = this.getTrendText(recentCount.MEDIUM, total);
-        document.getElementById('highTrend').textContent = this.getTrendText(recentCount.HIGH, total);
+        if (lowProbEl) lowProbEl.textContent = `${Math.round((recentCount.LOW / total) * 100)}%`;
+        if (mediumProbEl) mediumProbEl.textContent = `${Math.round((recentCount.MEDIUM / total) * 100)}%`;
+        if (highProbEl) highProbEl.textContent = `${Math.round((recentCount.HIGH / total) * 100)}%`;
+        
+        const lowTrendEl = document.getElementById('lowTrend');
+        const mediumTrendEl = document.getElementById('mediumTrend');
+        const highTrendEl = document.getElementById('highTrend');
+        
+        if (lowTrendEl) lowTrendEl.textContent = this.getTrendText(recentCount.LOW, total);
+        if (mediumTrendEl) mediumTrendEl.textContent = this.getTrendText(recentCount.MEDIUM, total);
+        if (highTrendEl) highTrendEl.textContent = this.getTrendText(recentCount.HIGH, total);
     }
     
     getTrendText(count, total) {
