@@ -1,6 +1,7 @@
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller - Four AI Models: Stick, Extreme Switch, Low-Mid Switch, Mid-High Switch
+ * UPDATED: 20,000 records storage, full pagination, periodic retraining
  */
 
 class LightningDiceApp {
@@ -14,12 +15,18 @@ class LightningDiceApp {
         this.refreshSeconds = 3;
         this.isInitialized = false;
         
-        // History tracking
+        // History tracking - UPDATED: 20,000 max size
         this.predictionHistory = [];
         this.currentPage = 1;
         this.itemsPerPage = 10;
-        this.maxHistorySize = 1000;
+        this.maxHistorySize = 20000;  // ✅ Changed from 1000 to 20000
         this.isLoadingHistory = false;
+        
+        // Retraining tracking - NEW
+        this.recordsSinceLastRetrain = 0;
+        this.retrainThreshold = 100;  // Retrain every 100 new records
+        this.lastRetrainTime = null;
+        this.retrainInterval = null;
         
         // Group definitions
         this.groups = {
@@ -33,24 +40,30 @@ class LightningDiceApp {
     
     async init() {
         console.log('🚀 Initializing Four AI Pattern System...');
+        console.log('📦 Max storage capacity: 20,000 records');
         
         this.loadHistoryFromLocalStorage();
         this.bindEvents();
         
-        await this.loadBaseData();
-        await this.loadLatestData();
-        await this.loadFullHistoryFromAPI(); // ✅ NEW: Real history from API
+        // Load ALL history data from API (all pages)
+        await this.loadFullHistoryFromAPI();
         
+        // Train AI models with complete data
         if (this.allResults.length >= 10) {
             await this.trainAllModels();
+            this.lastRetrainTime = new Date();
         }
+        
+        await this.loadLatestData();
         
         this.isInitialized = true;
         this.updateUI();
         this.startAutoRefresh();
         this.startTimer();
+        this.startPeriodicRetrain(); // ✅ NEW: Periodic retraining
         this.updateConnectionStatus(true);
         this.setupCollapsibleStats();
+        this.updateDataSizeIndicator(); // ✅ NEW: Show data size
     }
     
     loadHistoryFromLocalStorage() {
@@ -76,6 +89,19 @@ class LightningDiceApp {
             console.log(`✅ Saved ${toSave.length} history records to localStorage`);
         } catch(e) {
             console.warn('Failed to save history to localStorage:', e);
+        }
+    }
+    
+    // ✅ NEW: Show current data size in UI
+    updateDataSizeIndicator() {
+        const dataSizeElement = document.getElementById('dataSizeIndicator');
+        if (dataSizeElement) {
+            dataSizeElement.textContent = `${this.allResults.length} / ${this.maxHistorySize}`;
+        }
+        
+        const lastTrainElement = document.getElementById('lastTrainTime');
+        if (lastTrainElement && this.lastRetrainTime) {
+            lastTrainElement.textContent = this.lastRetrainTime.toLocaleTimeString();
         }
     }
     
@@ -127,77 +153,51 @@ class LightningDiceApp {
         }
     }
     
-    async loadBaseData() {
-        try {
-            console.log('📊 Loading 24-hour statistics...');
-            const response = await fetch(`${this.apiBase}/stats?duration=24&sortField=hotFrequency`);
-            if (!response.ok) throw new Error('Failed to load stats');
-            this.baseStats = await response.json();
-            console.log('✅ Base data loaded:', this.baseStats.totalCount, 'total rounds');
-            this.updateConnectionStatus(true);
-        } catch (error) {
-            console.error('❌ Error loading base data:', error);
-            this.showError('Failed to load statistics');
-            this.updateConnectionStatus(false);
-        }
-    }
-    
-    async loadLatestData() {
-        try {
-            const response = await fetch(`${this.apiBase}/latest`);
-            if (!response.ok) throw new Error('Failed to load latest');
-            const data = await response.json();
-            
-            if (data && data.data) {
-                const gameResult = this.parseGameData(data);
-                this.allResults.unshift(gameResult);
-                this.lastGameId = gameResult.id;
-                this.latestResult = gameResult;
-                console.log('✅ Latest data loaded');
-            }
-        } catch (error) {
-            console.error('❌ Error loading latest:', error);
-        }
-    }
-    
-    // ✅ NEW: Load real history from API (replaces the simulated one)
+    // ✅ UPDATED: Load ALL pages from history API (up to 20,000 records)
     async loadFullHistoryFromAPI() {
         if (this.isLoadingHistory) return;
         this.isLoadingHistory = true;
         
         try {
-            console.log('📜 Loading real history from API...');
+            console.log('📜 Loading complete history from API (all pages)...');
             
             // First, check if we already have history in localStorage
-            if (this.predictionHistory.length > 0) {
+            if (this.predictionHistory.length > 0 && this.predictionHistory.length >= 1000) {
                 console.log(`📦 Using existing history from localStorage (${this.predictionHistory.length} records)`);
-                // Still try to fetch new records from API
                 await this.fetchNewRecordsFromAPI();
                 this.isLoadingHistory = false;
                 return;
             }
             
             // Fetch first page to get total count
-            const firstResponse = await fetch(`${this.apiBase}/history?page=0&size=100`);
+            const firstResponse = await fetch(`${this.apiBase}/history?page=0&size=200`);
             const totalCount = parseInt(firstResponse.headers.get('X-Total-Count') || '0');
             const firstPageData = await firstResponse.json();
             
             let allApiResults = [...firstPageData];
-            console.log(`📊 Total records available: ${totalCount}`);
+            console.log(`📊 Total records available in 24h: ${totalCount}`);
             
-            // Calculate how many pages we need (max 1000 records)
+            // Calculate how many pages we need (max 20,000 records or all available)
             const recordsNeeded = Math.min(totalCount, this.maxHistorySize);
-            const pagesNeeded = Math.ceil(recordsNeeded / 100);
+            const pagesNeeded = Math.ceil(recordsNeeded / 200);
+            
+            console.log(`📚 Will fetch ${pagesNeeded} pages (${recordsNeeded} records max)`);
             
             // Fetch remaining pages
-            for (let page = 1; page < pagesNeeded && page < 10; page++) {
+            for (let page = 1; page < pagesNeeded && page < 100; page++) {
                 console.log(`📜 Fetching page ${page}...`);
-                const response = await fetch(`${this.apiBase}/history?page=${page}&size=100`);
+                const response = await fetch(`${this.apiBase}/history?page=${page}&size=200`);
                 const pageData = await response.json();
                 allApiResults.push(...pageData);
                 
                 // Small delay to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 150));
+                
+                // Stop if we've reached max capacity
+                if (allApiResults.length >= this.maxHistorySize) {
+                    console.log(`📦 Reached max capacity (${this.maxHistorySize}), stopping fetch`);
+                    break;
+                }
             }
             
             // Convert API results to game result format
@@ -217,7 +217,8 @@ class LightningDiceApp {
             // Sort by timestamp (newest first)
             gameResults.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
             
-            this.allResults = gameResults;
+            // Limit to maxHistorySize
+            this.allResults = gameResults.slice(0, this.maxHistorySize);
             console.log(`✅ Loaded ${this.allResults.length} real history records from API`);
             
             // Update lastGameId
@@ -228,17 +229,17 @@ class LightningDiceApp {
             // Build prediction history from real data
             await this.buildPredictionHistoryFromRealData();
             
+            this.updateDataSizeIndicator();
+            
         } catch (error) {
             console.error('❌ Error loading real history:', error);
-            // Fallback to simulated history if API fails
-            console.log('⚠️ Falling back to simulated history...');
-            this.generateHistoryFromStatsWithTimeSeries();
+            console.log('⚠️ Using existing data from localStorage');
         } finally {
             this.isLoadingHistory = false;
         }
     }
     
-    // ✅ NEW: Fetch only new records from API (for updates)
+    // ✅ UPDATED: Fetch only new records from API (for updates)
     async fetchNewRecordsFromAPI() {
         try {
             const response = await fetch(`${this.apiBase}/history?page=0&size=50`);
@@ -257,16 +258,21 @@ class LightningDiceApp {
                 }
             }
             
+            // Limit to maxHistorySize
+            if (this.allResults.length > this.maxHistorySize) {
+                this.allResults = this.allResults.slice(0, this.maxHistorySize);
+            }
+            
             if (newCount > 0) {
                 console.log(`🆕 Found ${newCount} new records from API`);
                 await this.buildPredictionHistoryFromRealData();
+                this.updateDataSizeIndicator();
             }
         } catch (error) {
             console.warn('Could not fetch new records:', error.message);
         }
     }
     
-    // ✅ NEW: Parse history API data format
     parseHistoryGameData(item) {
         try {
             const total = item.data.result.total;
@@ -298,7 +304,7 @@ class LightningDiceApp {
         return 1;
     }
     
-    // ✅ NEW: Build prediction history from real data
+    // ✅ UPDATED: Build prediction history from real data
     async buildPredictionHistoryFromRealData() {
         console.log('🔨 Building prediction history from real data...');
         
@@ -309,7 +315,6 @@ class LightningDiceApp {
             const currentResult = orderedResults[i];
             const previousResult = orderedResults[i - 1];
             
-            // Get predictions for this result
             const lastResults = this.getLastNResultsFromHistory(orderedResults, i);
             const currentGroup = currentResult.group;
             const previousGroup = previousResult.group;
@@ -341,61 +346,9 @@ class LightningDiceApp {
         return results;
     }
     
-    // Legacy fallback (kept for compatibility)
-    generateHistoryFromStatsWithTimeSeries() {
-        const numbers = this.baseStats.totalStats;
-        const allEvents = [];
-        
-        console.log('🔄 Generating fallback history from stats data...');
-        
-        for (let num of numbers) {
-            const count = Math.min(num.count, 40);
-            const lastTime = new Date(num.lastOccurredAt);
-            const group = this.getGroup(num.wheelResult);
-            
-            if (isNaN(lastTime.getTime())) continue;
-            
-            for (let i = 0; i < count; i++) {
-                const intervalMinutes = 2 + Math.random() * 3;
-                const eventTime = new Date(lastTime.getTime() - (i * intervalMinutes * 60 * 1000));
-                
-                allEvents.push({
-                    group: group,
-                    total: num.wheelResult,
-                    timestamp: eventTime,
-                    multiplier: Math.floor(Math.random() * 50) + 1,
-                    diceValues: this.generateRandomDiceValues(),
-                    id: `${num.wheelResult}_${eventTime.getTime()}`,
-                    isReal: false
-                });
-            }
-        }
-        
-        allEvents.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        
-        const uniqueEvents = [];
-        const seenKeys = new Set();
-        
-        for (let event of allEvents) {
-            const key = `${event.total}_${event.timestamp.getTime()}`;
-            if (!seenKeys.has(key)) {
-                seenKeys.add(key);
-                uniqueEvents.push(event);
-            }
-        }
-        
-        this.allResults = uniqueEvents;
-        
-        console.log(`📊 Generated ${this.allResults.length} fallback events`);
-    }
-    
-    generateRandomDiceValues() {
-        const dice = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-        return `${dice[Math.floor(Math.random() * 6)]}${dice[Math.floor(Math.random() * 6)]}${dice[Math.floor(Math.random() * 6)]}`;
-    }
-    
+    // ✅ UPDATED: Train all models with complete data
     async trainAllModels() {
-        console.log('🎓 Training all 4 AI models...');
+        console.log(`🎓 Training all 4 AI models with ${this.allResults.length} records...`);
         
         const historyInOrder = this.getAllResultsInOrder();
         
@@ -423,7 +376,42 @@ class LightningDiceApp {
             window.EnsembleVoterV4.updateWeights(accStick, accExtreme, accLowMid, accMidHigh);
         }
         
+        this.recordsSinceLastRetrain = 0;
+        this.lastRetrainTime = new Date();
+        this.updateDataSizeIndicator();
+        
         console.log('✅ All 4 AI models trained!');
+    }
+    
+    // ✅ NEW: Periodic full retraining
+    startPeriodicRetrain() {
+        // Retrain every 2 hours (7200000 ms)
+        this.retrainInterval = setInterval(async () => {
+            console.log('⏰ Periodic retrain triggered (2 hour interval)...');
+            await this.fullRetrain();
+        }, 2 * 60 * 60 * 1000);
+    }
+    
+    // ✅ NEW: Full retrain with current data
+    async fullRetrain() {
+        console.log('🔄 Starting full retrain...');
+        
+        if (this.allResults.length > 0) {
+            await this.trainAllModels();
+            await this.buildPredictionHistoryFromRealData();
+            this.updateUI();
+            console.log('✅ Full retrain complete');
+        }
+    }
+    
+    // ✅ NEW: Check and retrain if threshold reached
+    async checkAndRetrain() {
+        this.recordsSinceLastRetrain++;
+        
+        if (this.recordsSinceLastRetrain >= this.retrainThreshold) {
+            console.log(`📊 Retrain threshold reached (${this.recordsSinceLastRetrain} new records), retraining...`);
+            await this.fullRetrain();
+        }
     }
     
     getAllResultsInOrder() {
@@ -461,6 +449,7 @@ class LightningDiceApp {
         return 'UNKNOWN';
     }
     
+    // ✅ UPDATED: Check for new data with retrain trigger
     async checkForNewData(manual = false) {
         if (!this.isInitialized) return;
         
@@ -496,8 +485,12 @@ class LightningDiceApp {
                 this.lastGameId = gameResult.id;
                 this.latestResult = gameResult;
                 
-                if (this.allResults.length > 1500) this.allResults.pop();
+                // Limit to maxHistorySize
+                if (this.allResults.length > this.maxHistorySize) {
+                    this.allResults.pop();
+                }
                 
+                // Update AI models incrementally
                 if (window.AI_Stick) window.AI_Stick.updateWithResult(gameResult, previousGroup);
                 if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.updateWithResult(gameResult, previousGroup);
                 if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.updateWithResult(gameResult, previousGroup);
@@ -515,6 +508,10 @@ class LightningDiceApp {
                 this.updateUI();
                 this.animateNewResult();
                 this.updateConnectionStatus(true);
+                this.updateDataSizeIndicator();
+                
+                // ✅ Check if we need to retrain
+                await this.checkAndRetrain();
             }
         } catch (error) {
             console.error('Error checking for new data:', error);
@@ -566,7 +563,6 @@ class LightningDiceApp {
             isReal: true
         };
         
-        // Check for duplicate
         const exists = this.predictionHistory.some(h => h.id === historyEntry.id);
         if (!exists) {
             this.predictionHistory.unshift(historyEntry);
@@ -661,7 +657,6 @@ class LightningDiceApp {
     }
     
     updateUI() {
-        if (!this.baseStats) return;
         this.updateStatsUI();
         this.updateStatisticsTable();
         this.updateGroupProbabilities();
@@ -785,23 +780,22 @@ class LightningDiceApp {
     }
     
     updateStatsUI() {
-        const totalCount = this.baseStats.totalCount || 0;
-        const numbers = this.baseStats.totalStats || [];
-        
-        let totalSum = 0, totalFreq = 0;
-        numbers.forEach(item => {
-            totalSum += parseInt(item.wheelResult) * item.count;
-            totalFreq += item.count;
-        });
-        const avgResult = totalFreq > 0 ? (totalSum / totalFreq).toFixed(2) : 0;
-        
+        // Stats UI updated without /stats API
+        const totalCount = this.allResults.length;
         document.getElementById('totalRounds').textContent = totalCount.toLocaleString();
+        
+        // Calculate average from actual results
+        let totalSum = 0;
+        this.allResults.forEach(result => {
+            totalSum += result.total;
+        });
+        const avgResult = totalCount > 0 ? (totalSum / totalCount).toFixed(2) : 0;
         document.getElementById('avgResult').textContent = avgResult;
         
+        // Calculate group distribution
         const groupCounts = { LOW: 0, MEDIUM: 0, HIGH: 0 };
-        numbers.forEach(item => {
-            const group = this.getGroup(item.wheelResult);
-            if (group !== 'UNKNOWN') groupCounts[group] += item.count;
+        this.allResults.forEach(result => {
+            if (result.group !== 'UNKNOWN') groupCounts[result.group]++;
         });
         
         let mostActive = 'LOW', maxCount = groupCounts.LOW;
@@ -809,33 +803,52 @@ class LightningDiceApp {
         if (groupCounts.HIGH > maxCount) { mostActive = 'HIGH'; }
         document.getElementById('mostActiveGroup').textContent = mostActive;
         
-        const lightningMatchStats = this.baseStats.lightningNumberMatchedStats;
-        const matchPercent = lightningMatchStats?.find(s => s.type === 'Match')?.percentage || 0;
-        document.getElementById('lightningBoost').textContent = `${Math.round(matchPercent)}%`;
+        document.getElementById('lightningBoost').textContent = 'N/A';
     }
     
     updateStatisticsTable() {
         const tbody = document.getElementById('statsTableBody');
-        const numbers = this.baseStats?.totalStats || [];
         
-        if (!tbody || numbers.length === 0) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="5">No data available</td></tr>';
+        if (!tbody) return;
+        
+        // Calculate frequency from allResults
+        const frequencyMap = {};
+        const lastSeenMap = {};
+        
+        this.allResults.forEach(result => {
+            const num = result.total;
+            frequencyMap[num] = (frequencyMap[num] || 0) + 1;
+            if (!lastSeenMap[num]) {
+                lastSeenMap[num] = result.timestamp;
+            }
+        });
+        
+        const numbers = [];
+        for (let i = 3; i <= 18; i++) {
+            numbers.push({
+                wheelResult: i,
+                count: frequencyMap[i] || 0,
+                lastOccurredAt: lastSeenMap[i] || null
+            });
+        }
+        
+        if (numbers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No data available</td></tr>';
             return;
         }
         
-        const sortedNumbers = [...numbers].sort((a, b) => a.wheelResult - b.wheelResult);
-        tbody.innerHTML = sortedNumbers.map(item => {
+        tbody.innerHTML = numbers.map(item => {
             const group = this.getGroup(item.wheelResult);
             const groupClass = `group-${group.toLowerCase()}`;
-            const lastTime = new Date(item.lastOccurredAt);
-            const timeAgo = this.getTimeAgo(lastTime);
+            const lastTime = item.lastOccurredAt ? new Date(item.lastOccurredAt) : null;
+            const timeAgo = lastTime ? this.getTimeAgo(lastTime) : 'Never';
             
             return `
                 <tr>
                     <td><strong>${item.wheelResult}</strong></td>
                     <td><span class="group-badge ${groupClass}">${group}</span></td>
                     <td>${item.count}</td>
-                    <td>${item.hotFrequencyPercentage ? Math.round(item.hotFrequencyPercentage) : 0}%</td>
+                    <td>${item.count > 0 ? Math.round((item.count / this.allResults.length) * 100) : 0}%</td>
                     <td>${timeAgo}</td>
                 </tr>
             `;
@@ -961,6 +974,27 @@ class LightningDiceApp {
             errorDiv.textContent = `⚠️ ${message}`;
             errorDiv.style.display = 'block';
             setTimeout(() => errorDiv.style.display = 'none', 5000);
+        }
+    }
+    
+    async loadLatestData() {
+        try {
+            const response = await fetch(`${this.apiBase}/latest`);
+            if (!response.ok) throw new Error('Failed to load latest');
+            const data = await response.json();
+            
+            if (data && data.data) {
+                const gameResult = this.parseGameData(data);
+                const existingIndex = this.allResults.findIndex(r => r.id === gameResult.id);
+                if (existingIndex === -1) {
+                    this.allResults.unshift(gameResult);
+                    this.lastGameId = gameResult.id;
+                    this.latestResult = gameResult;
+                    console.log('✅ Latest data loaded');
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error loading latest:', error);
         }
     }
 }
