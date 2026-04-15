@@ -1,6 +1,7 @@
 /**
  * Ensemble Voter v4.0
  * Combines predictions from all 4 AI models
+ * With Server Sync Support
  */
 
 class EnsembleVoterV4 {
@@ -171,10 +172,31 @@ class EnsembleVoterV4 {
         this.totalPredictions++;
         if (correct) this.correctPredictions++;
         this.accuracy = (this.correctPredictions / this.totalPredictions) * 100;
+        this.saveAccuracy();
+    }
+    
+    // ============ Server Sync Methods ============
+    
+    setAccuracy(accuracy) {
+        this.accuracy = accuracy;
+    }
+    
+    getAccuracy() {
+        return this.accuracy;
+    }
+    
+    getTotalPredictions() {
+        return this.totalPredictions;
+    }
+    
+    getCorrectPredictions() {
+        return this.correctPredictions;
     }
     
     saveWeights() {
-        localStorage.setItem('ensemble_v4_weights', JSON.stringify(this.weights));
+        try {
+            localStorage.setItem('ensemble_v4_weights', JSON.stringify(this.weights));
+        } catch(e) { console.warn('Save weights failed:', e); }
     }
     
     loadWeights() {
@@ -187,9 +209,51 @@ class EnsembleVoterV4 {
         } catch(e) { console.warn('Load weights failed:', e); }
     }
     
-    getAccuracy() {
-        return this.accuracy;
+    saveAccuracy() {
+        try {
+            localStorage.setItem('ensemble_v4_accuracy', JSON.stringify({
+                totalPredictions: this.totalPredictions,
+                correctPredictions: this.correctPredictions,
+                accuracy: this.accuracy
+            }));
+        } catch(e) { console.warn('Save accuracy failed:', e); }
     }
+    
+    loadAccuracy() {
+        try {
+            const saved = localStorage.getItem('ensemble_v4_accuracy');
+            if (saved) {
+                const data = JSON.parse(saved);
+                this.totalPredictions = data.totalPredictions || 0;
+                this.correctPredictions = data.correctPredictions || 0;
+                this.accuracy = data.accuracy || 0;
+                console.log(`✅ Ensemble v4 accuracy loaded: ${this.accuracy.toFixed(1)}%`);
+            }
+        } catch(e) { console.warn('Load accuracy failed:', e); }
+    }
+    
+    // Load from server (for syncing across devices)
+    loadFromServer(data) {
+        if (data) {
+            this.weights = data.weights || this.weights;
+            this.totalPredictions = data.totalPredictions || 0;
+            this.correctPredictions = data.correctPredictions || 0;
+            this.accuracy = data.accuracy || 0;
+            console.log(`✅ Ensemble v4: Loaded from server (${this.accuracy.toFixed(1)}% accuracy)`);
+        }
+    }
+    
+    // Export for server storage
+    exportForServer() {
+        return {
+            weights: this.weights,
+            totalPredictions: this.totalPredictions,
+            correctPredictions: this.correctPredictions,
+            accuracy: this.accuracy
+        };
+    }
+    
+    // ============ Helper Methods ============
     
     getGroupIcon(group) {
         if (group === 'LOW') return '🔴';
@@ -201,6 +265,17 @@ class EnsembleVoterV4 {
         if (group === 'LOW') return '3-9';
         if (group === 'MEDIUM') return '10-11';
         return '12-18';
+    }
+    
+    getStats() {
+        return {
+            name: this.name,
+            version: this.version,
+            accuracy: this.accuracy,
+            totalPredictions: this.totalPredictions,
+            correctPredictions: this.correctPredictions,
+            weights: this.weights
+        };
     }
 }
 
