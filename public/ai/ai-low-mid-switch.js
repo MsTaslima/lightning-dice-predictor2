@@ -242,3 +242,27 @@ class AI_LowMidSwitch {
 }
 
 window.AI_LowMidSwitch = new AI_LowMidSwitch();
+
+// প্রতিটি AI ক্লাসের শেষে এই মেথডগুলো যোগ করুন
+
+setAccuracy(accuracy) {
+    this.accuracy = accuracy;
+}
+
+loadFromServer(patterns) {
+    for (const [patternKey, data] of Object.entries(patterns)) {
+        if (this.patternStreaks.hasOwnProperty(patternKey)) {
+            this.patternStreaks[patternKey] = data.streak_value || 0;
+        }
+        if (this.patternHistory[patternKey]) {
+            this.patternHistory[patternKey].maxStreak = data.max_streak || 0;
+            this.patternHistory[patternKey].breaks = data.break_data?.breaks || [];
+            this.patternHistory[patternKey].nextAfterBreak = data.break_data?.nextAfterBreak || {};
+            if (this.patternHistory[patternKey].breaks.length > 0) {
+                const sum = this.patternHistory[patternKey].breaks.reduce((a, b) => a + b, 0);
+                this.patternHistory[patternKey].avgStreak = sum / this.patternHistory[patternKey].breaks.length;
+            }
+        }
+    }
+    console.log(`✅ ${this.name}: Loaded patterns from server`);
+}
