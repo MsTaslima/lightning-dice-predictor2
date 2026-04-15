@@ -9,28 +9,24 @@ class AI_Stick {
         this.name = "AI-Stick";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Pattern streaks tracking
         this.patternStreaks = {
             "LOW→LOW": 0,
             "MEDIUM→MEDIUM": 0,
             "HIGH→HIGH": 0
         };
         
-        // Historical pattern data
         this.patternHistory = {
             "LOW→LOW": { maxStreak: 0, breaks: [], avgStreak: 0, nextAfterBreak: {} },
             "MEDIUM→MEDIUM": { maxStreak: 0, breaks: [], avgStreak: 0, nextAfterBreak: {} },
             "HIGH→HIGH": { maxStreak: 0, breaks: [], avgStreak: 0, nextAfterBreak: {} }
         };
         
-        // Default max streak limits (17-20 range)
         this.defaultMaxStreak = {
             "LOW→LOW": 20,
             "MEDIUM→MEDIUM": 17,
             "HIGH→HIGH": 18
         };
         
-        // Performance tracking
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
@@ -48,12 +44,10 @@ class AI_Stick {
         
         console.log(`📚 AI-A: Training with ${history.length} results...`);
         
-        // Reset tracking
         for (let pattern in this.patternStreaks) {
             this.patternStreaks[pattern] = 0;
         }
         
-        // Analyze history for patterns
         for (let i = 1; i < history.length; i++) {
             const prevGroup = history[i-1].group;
             const currGroup = history[i].group;
@@ -61,10 +55,8 @@ class AI_Stick {
             
             if (this.patternStreaks.hasOwnProperty(patternKey)) {
                 if (prevGroup === currGroup) {
-                    // Same group - increment streak
                     this.patternStreaks[patternKey]++;
                 } else {
-                    // Pattern broke - record break
                     const streakValue = this.patternStreaks[patternKey];
                     if (streakValue > 0) {
                         this.recordBreak(patternKey, streakValue, currGroup);
@@ -74,7 +66,6 @@ class AI_Stick {
             }
         }
         
-        // Calculate averages and max streaks
         this.calculateStats();
         this.saveToStorage();
         this.printStats();
@@ -89,7 +80,6 @@ class AI_Stick {
             if (streakLength > history.maxStreak) {
                 history.maxStreak = streakLength;
             }
-            // Track what comes after break
             history.nextAfterBreak[nextGroup] = (history.nextAfterBreak[nextGroup] || 0) + 1;
         }
     }
@@ -105,7 +95,6 @@ class AI_Stick {
     }
     
     predict(currentGroup, previousGroup) {
-        // Check if this is a stick pattern
         if (currentGroup !== previousGroup) {
             return this.getDefaultPrediction(currentGroup);
         }
@@ -115,13 +104,11 @@ class AI_Stick {
         const history = this.patternHistory[patternKey];
         const maxStreak = history.maxStreak > 0 ? history.maxStreak : this.defaultMaxStreak[patternKey];
         
-        // Calculate break probability based on streak length
         let breakProbability = 0;
         let willBreak = false;
         let remaining = maxStreak - currentStreak;
         
         if (currentStreak >= maxStreak - 3) {
-            // Close to max streak - high break probability
             breakProbability = 60 + ((currentStreak - (maxStreak - 3)) * 10);
             if (breakProbability > 95) breakProbability = 95;
             willBreak = breakProbability > 70;
@@ -132,12 +119,10 @@ class AI_Stick {
             if (breakProbability > 35) breakProbability = 35;
         }
         
-        // Determine next group if break occurs
         let nextGroup = currentGroup;
         let nextGroupConfidence = 50;
         
         if (willBreak && history.nextAfterBreak) {
-            // Find most common next group after break
             let maxCount = 0;
             for (let [group, count] of Object.entries(history.nextAfterBreak)) {
                 if (count > maxCount) {
@@ -185,10 +170,8 @@ class AI_Stick {
         const patternKey = `${previousGroup}→${result.group}`;
         
         if (previousGroup === result.group) {
-            // Stick continued
             this.patternStreaks[patternKey] = (this.patternStreaks[patternKey] || 0) + 1;
         } else {
-            // Break occurred
             const streakValue = this.patternStreaks[patternKey] || 0;
             if (streakValue > 0) {
                 this.recordBreak(patternKey, streakValue, result.group);
@@ -244,7 +227,61 @@ class AI_Stick {
     }
     
     getAccuracy() {
-        return this.accuracy;
+        return this.accuracy || 0;
+    }
+    
+    setAccuracy(accuracy) {
+        this.accuracy = accuracy;
+    }
+    
+    getTotalPredictions() {
+        return this.totalPredictions;
+    }
+    
+    getCorrectPredictions() {
+        return this.correctPredictions;
+    }
+    
+    loadFromServer(patterns) {
+        for (const [patternKey, data] of Object.entries(patterns)) {
+            if (this.patternStreaks.hasOwnProperty(patternKey)) {
+                this.patternStreaks[patternKey] = data.streak_value || 0;
+            }
+            if (this.patternHistory[patternKey]) {
+                this.patternHistory[patternKey].maxStreak = data.max_streak || 0;
+                this.patternHistory[patternKey].breaks = data.break_data?.breaks || [];
+                this.patternHistory[patternKey].nextAfterBreak = data.break_data?.nextAfterBreak || {};
+                if (this.patternHistory[patternKey].breaks.length > 0) {
+                    const sum = this.patternHistory[patternKey].breaks.reduce((a, b) => a + b, 0);
+                    this.patternHistory[patternKey].avgStreak = sum / this.patternHistory[patternKey].breaks.length;
+                }
+            }
+        }
+        console.log(`✅ ${this.name}: Loaded patterns from server`);
+    }
+    
+    exportForServer() {
+        const exportData = {};
+        for (const [patternKey, history] of Object.entries(this.patternHistory)) {
+            exportData[patternKey] = {
+                streak_value: this.patternStreaks[patternKey] || 0,
+                max_streak: history.maxStreak,
+                break_data: {
+                    breaks: history.breaks,
+                    nextAfterBreak: history.nextAfterBreak
+                }
+            };
+        }
+        return exportData;
+    }
+    
+    getStats() {
+        return {
+            name: this.name,
+            accuracy: this.accuracy,
+            totalPredictions: this.totalPredictions,
+            correctPredictions: this.correctPredictions
+        };
     }
     
     getGroupIcon(group) {
@@ -255,27 +292,3 @@ class AI_Stick {
 }
 
 window.AI_Stick = new AI_Stick();
-
-// প্রতিটি AI ক্লাসের শেষে এই মেথডগুলো যোগ করুন
-
-setAccuracy(accuracy) {
-    this.accuracy = accuracy;
-}
-
-loadFromServer(patterns) {
-    for (const [patternKey, data] of Object.entries(patterns)) {
-        if (this.patternStreaks.hasOwnProperty(patternKey)) {
-            this.patternStreaks[patternKey] = data.streak_value || 0;
-        }
-        if (this.patternHistory[patternKey]) {
-            this.patternHistory[patternKey].maxStreak = data.max_streak || 0;
-            this.patternHistory[patternKey].breaks = data.break_data?.breaks || [];
-            this.patternHistory[patternKey].nextAfterBreak = data.break_data?.nextAfterBreak || {};
-            if (this.patternHistory[patternKey].breaks.length > 0) {
-                const sum = this.patternHistory[patternKey].breaks.reduce((a, b) => a + b, 0);
-                this.patternHistory[patternKey].avgStreak = sum / this.patternHistory[patternKey].breaks.length;
-            }
-        }
-    }
-    console.log(`✅ ${this.name}: Loaded patterns from server`);
-}
