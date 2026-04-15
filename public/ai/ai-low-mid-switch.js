@@ -9,19 +9,16 @@ class AI_LowMidSwitch {
         this.name = "AI-LowMidSwitch";
         this.groups = ['LOW', 'MEDIUM'];
         
-        // Pattern streaks tracking
         this.patternStreaks = {
             "LOW→MEDIUM": 0,
             "MEDIUM→LOW": 0
         };
         
-        // Historical pattern data
         this.patternHistory = {
             "LOW→MEDIUM": { maxStreak: 0, breaks: [], avgStreak: 0, nextAfterBreak: {} },
             "MEDIUM→LOW": { maxStreak: 0, breaks: [], avgStreak: 0, nextAfterBreak: {} }
         };
         
-        // Default max streak limits
         this.defaultMaxStreak = {
             "LOW→MEDIUM": 18,
             "MEDIUM→LOW": 18
@@ -231,7 +228,61 @@ class AI_LowMidSwitch {
     }
     
     getAccuracy() {
-        return this.accuracy;
+        return this.accuracy || 0;
+    }
+    
+    setAccuracy(accuracy) {
+        this.accuracy = accuracy;
+    }
+    
+    getTotalPredictions() {
+        return this.totalPredictions;
+    }
+    
+    getCorrectPredictions() {
+        return this.correctPredictions;
+    }
+    
+    loadFromServer(patterns) {
+        for (const [patternKey, data] of Object.entries(patterns)) {
+            if (this.patternStreaks.hasOwnProperty(patternKey)) {
+                this.patternStreaks[patternKey] = data.streak_value || 0;
+            }
+            if (this.patternHistory[patternKey]) {
+                this.patternHistory[patternKey].maxStreak = data.max_streak || 0;
+                this.patternHistory[patternKey].breaks = data.break_data?.breaks || [];
+                this.patternHistory[patternKey].nextAfterBreak = data.break_data?.nextAfterBreak || {};
+                if (this.patternHistory[patternKey].breaks.length > 0) {
+                    const sum = this.patternHistory[patternKey].breaks.reduce((a, b) => a + b, 0);
+                    this.patternHistory[patternKey].avgStreak = sum / this.patternHistory[patternKey].breaks.length;
+                }
+            }
+        }
+        console.log(`✅ ${this.name}: Loaded patterns from server`);
+    }
+    
+    exportForServer() {
+        const exportData = {};
+        for (const [patternKey, history] of Object.entries(this.patternHistory)) {
+            exportData[patternKey] = {
+                streak_value: this.patternStreaks[patternKey] || 0,
+                max_streak: history.maxStreak,
+                break_data: {
+                    breaks: history.breaks,
+                    nextAfterBreak: history.nextAfterBreak
+                }
+            };
+        }
+        return exportData;
+    }
+    
+    getStats() {
+        return {
+            name: this.name,
+            accuracy: this.accuracy,
+            totalPredictions: this.totalPredictions,
+            correctPredictions: this.correctPredictions
+        };
     }
     
     getGroupIcon(group) {
@@ -242,27 +293,3 @@ class AI_LowMidSwitch {
 }
 
 window.AI_LowMidSwitch = new AI_LowMidSwitch();
-
-// প্রতিটি AI ক্লাসের শেষে এই মেথডগুলো যোগ করুন
-
-setAccuracy(accuracy) {
-    this.accuracy = accuracy;
-}
-
-loadFromServer(patterns) {
-    for (const [patternKey, data] of Object.entries(patterns)) {
-        if (this.patternStreaks.hasOwnProperty(patternKey)) {
-            this.patternStreaks[patternKey] = data.streak_value || 0;
-        }
-        if (this.patternHistory[patternKey]) {
-            this.patternHistory[patternKey].maxStreak = data.max_streak || 0;
-            this.patternHistory[patternKey].breaks = data.break_data?.breaks || [];
-            this.patternHistory[patternKey].nextAfterBreak = data.break_data?.nextAfterBreak || {};
-            if (this.patternHistory[patternKey].breaks.length > 0) {
-                const sum = this.patternHistory[patternKey].breaks.reduce((a, b) => a + b, 0);
-                this.patternHistory[patternKey].avgStreak = sum / this.patternHistory[patternKey].breaks.length;
-            }
-        }
-    }
-    console.log(`✅ ${this.name}: Loaded patterns from server`);
-}
