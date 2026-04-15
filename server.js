@@ -20,7 +20,6 @@ const db = new sqlite3.Database(path.join(dbDir, 'lightning_dice.db'));
 
 // Create tables
 db.serialize(() => {
-    // Results table
     db.run(`CREATE TABLE IF NOT EXISTS results (
         id TEXT PRIMARY KEY,
         total INTEGER,
@@ -32,7 +31,6 @@ db.serialize(() => {
         payout INTEGER
     )`);
     
-    // Predictions table
     db.run(`CREATE TABLE IF NOT EXISTS predictions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         result_id TEXT,
@@ -50,7 +48,6 @@ db.serialize(() => {
         FOREIGN KEY(result_id) REFERENCES results(id)
     )`);
     
-    // AI Stats table
     db.run(`CREATE TABLE IF NOT EXISTS ai_stats (
         ai_name TEXT PRIMARY KEY,
         total_predictions INTEGER DEFAULT 0,
@@ -59,7 +56,6 @@ db.serialize(() => {
         last_updated DATETIME
     )`);
     
-    // Pattern data table for AI persistence
     db.run(`CREATE TABLE IF NOT EXISTS pattern_data (
         ai_name TEXT,
         pattern_key TEXT,
@@ -144,7 +140,7 @@ async function collectData() {
             }
         }
     } catch (error) {
-        console.error('❌ Data collection error:', error);
+        console.error('❌ Data collection error:', error.message);
     }
     
     isCollecting = false;
@@ -287,7 +283,7 @@ app.post('/api/save-prediction', (req, res) => {
             correct_stick, correct_extreme, correct_low_mid, correct_mid_high, correct_ensemble, timestamp)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [result_id, ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group,
-         correct.stick, correct.extreme, correct.low_mid, correct.mid_high, correct.ensemble, new Date().toISOString()],
+         correct.stick ? 1 : 0, correct.extreme ? 1 : 0, correct.low_mid ? 1 : 0, correct.mid_high ? 1 : 0, correct.ensemble ? 1 : 0, new Date().toISOString()],
         (err) => {
             if (err) {
                 res.status(500).json({ error: err.message });
@@ -401,3 +397,26 @@ collectData();
 
 console.log('📊 Background data collection started (every 3 seconds)');
 console.log(`🔌 WebSocket server ready for real-time updates`);
+
+// Graceful shutdown handling for Railway
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, closing server gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        db.close(() => {
+            console.log('Database connection closed');
+            process.exit(0);
+        });
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, closing server gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        db.close(() => {
+            console.log('Database connection closed');
+            process.exit(0);
+        });
+    });
+});
