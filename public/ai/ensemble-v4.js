@@ -29,6 +29,7 @@ class EnsembleVoterV4 {
     init() {
         console.log('🏆 Ensemble Voter v4.0 Initializing...');
         this.loadWeights();
+        this.loadAccuracy();
     }
     
     combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) {
@@ -41,33 +42,33 @@ class EnsembleVoterV4 {
         
         // AI-A (Stick) - gives nextGroup if stick continues
         if (predStick && predStick.prediction === "STICK") {
-            predictions[predStick.nextGroup] += predStick.confidence * this.weights.stick;
+            if (predStick.nextGroup) predictions[predStick.nextGroup] += predStick.confidence * this.weights.stick;
         } else if (predStick && predStick.prediction === "SWITCH") {
-            predictions[predStick.nextGroup] += predStick.nextGroupConfidence * this.weights.stick;
+            if (predStick.nextGroup) predictions[predStick.nextGroup] += (predStick.nextGroupConfidence || 50) * this.weights.stick;
         }
         
         // AI-B (Extreme Switch)
-        if (predExtreme && predExtreme.prediction === "CONTINUE") {
+        if (predExtreme && predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
             const targetGroup = predExtreme.pattern.split("→")[1];
-            predictions[targetGroup] += predExtreme.confidence * this.weights.extremeSwitch;
-        } else if (predExtreme && predExtreme.prediction === "BREAK") {
-            predictions[predExtreme.nextGroup] += predExtreme.nextGroupConfidence * this.weights.extremeSwitch;
+            if (targetGroup) predictions[targetGroup] += predExtreme.confidence * this.weights.extremeSwitch;
+        } else if (predExtreme && predExtreme.prediction === "BREAK" && predExtreme.nextGroup) {
+            predictions[predExtreme.nextGroup] += (predExtreme.nextGroupConfidence || 50) * this.weights.extremeSwitch;
         }
         
         // AI-C (Low-Mid Switch)
-        if (predLowMid && predLowMid.prediction === "CONTINUE") {
+        if (predLowMid && predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
             const targetGroup = predLowMid.pattern.split("→")[1];
-            predictions[targetGroup] += predLowMid.confidence * this.weights.lowMidSwitch;
-        } else if (predLowMid && predLowMid.prediction === "BREAK") {
-            predictions[predLowMid.nextGroup] += predLowMid.nextGroupConfidence * this.weights.lowMidSwitch;
+            if (targetGroup) predictions[targetGroup] += predLowMid.confidence * this.weights.lowMidSwitch;
+        } else if (predLowMid && predLowMid.prediction === "BREAK" && predLowMid.nextGroup) {
+            predictions[predLowMid.nextGroup] += (predLowMid.nextGroupConfidence || 50) * this.weights.lowMidSwitch;
         }
         
         // AI-D (Mid-High Switch)
-        if (predMidHigh && predMidHigh.prediction === "CONTINUE") {
+        if (predMidHigh && predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
             const targetGroup = predMidHigh.pattern.split("→")[1];
-            predictions[targetGroup] += predMidHigh.confidence * this.weights.midHighSwitch;
-        } else if (predMidHigh && predMidHigh.prediction === "BREAK") {
-            predictions[predMidHigh.nextGroup] += predMidHigh.nextGroupConfidence * this.weights.midHighSwitch;
+            if (targetGroup) predictions[targetGroup] += predMidHigh.confidence * this.weights.midHighSwitch;
+        } else if (predMidHigh && predMidHigh.prediction === "BREAK" && predMidHigh.nextGroup) {
+            predictions[predMidHigh.nextGroup] += (predMidHigh.nextGroupConfidence || 50) * this.weights.midHighSwitch;
         }
         
         // Find winner
@@ -82,30 +83,29 @@ class EnsembleVoterV4 {
             }
         }
         
-        // Count votes (simplified - which AI predicted which group)
-        if (predStick && predStick.prediction === "STICK") voteCount[predStick.nextGroup]++;
-        if (predStick && predStick.prediction === "SWITCH") voteCount[predStick.nextGroup]++;
-        if (predExtreme && predExtreme.prediction === "CONTINUE") {
+        // Count votes
+        if (predStick && predStick.nextGroup) voteCount[predStick.nextGroup]++;
+        if (predExtreme && predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
             const target = predExtreme.pattern.split("→")[1];
-            voteCount[target]++;
+            if (target) voteCount[target]++;
         }
-        if (predExtreme && predExtreme.prediction === "BREAK") voteCount[predExtreme.nextGroup]++;
-        if (predLowMid && predLowMid.prediction === "CONTINUE") {
+        if (predExtreme && predExtreme.prediction === "BREAK" && predExtreme.nextGroup) voteCount[predExtreme.nextGroup]++;
+        if (predLowMid && predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
             const target = predLowMid.pattern.split("→")[1];
-            voteCount[target]++;
+            if (target) voteCount[target]++;
         }
-        if (predLowMid && predLowMid.prediction === "BREAK") voteCount[predLowMid.nextGroup]++;
-        if (predMidHigh && predMidHigh.prediction === "CONTINUE") {
+        if (predLowMid && predLowMid.prediction === "BREAK" && predLowMid.nextGroup) voteCount[predLowMid.nextGroup]++;
+        if (predMidHigh && predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
             const target = predMidHigh.pattern.split("→")[1];
-            voteCount[target]++;
+            if (target) voteCount[target]++;
         }
-        if (predMidHigh && predMidHigh.prediction === "BREAK") voteCount[predMidHigh.nextGroup]++;
+        if (predMidHigh && predMidHigh.prediction === "BREAK" && predMidHigh.nextGroup) voteCount[predMidHigh.nextGroup]++;
         
         const agreement = Math.max(...Object.values(voteCount));
         const finalConfidence = Math.min(95, Math.round(finalScore));
         
         // Generate explanation
-        let explanation = this.generateExplanation(finalGroup, agreement, voteCount, predStick, predExtreme, predLowMid, predMidHigh);
+        let explanation = this.generateExplanation(finalGroup, agreement, voteCount);
         
         return {
             final: {
@@ -126,27 +126,16 @@ class EnsembleVoterV4 {
         };
     }
     
-    generateExplanation(finalGroup, agreement, voteCount, predStick, predExtreme, predLowMid, predMidHigh) {
-        let explanation = `🎯 ${agreement} out of 4 AI models predict ${finalGroup}. `;
-        
+    generateExplanation(finalGroup, agreement, voteCount) {
         if (agreement === 4) {
-            explanation = `🎯 All 4 AI models unanimously agree on ${finalGroup}! Very high confidence prediction.`;
+            return `🎯 All 4 AI models unanimously agree on ${finalGroup}! Very high confidence prediction.`;
         } else if (agreement === 3) {
-            explanation = `⚡ Strong consensus: ${agreement} AI models predict ${finalGroup}. `;
+            return `⚡ Strong consensus: ${agreement} AI models predict ${finalGroup}.`;
         } else if (agreement === 2) {
-            explanation = `⚖️ Split decision: ${agreement} AI models favor ${finalGroup}. `;
+            return `⚖️ Split decision: ${agreement} AI models favor ${finalGroup}.`;
         } else {
-            explanation = `🔄 All AI models disagree. Weighted voting selects ${finalGroup}. `;
+            return `🔄 All AI models disagree. Weighted voting selects ${finalGroup}.`;
         }
-        
-        // Add specific AI recommendations
-        if (predStick && predStick.prediction === "STICK") {
-            explanation += ` AI-A suggests ${predStick.nextGroup} will stick.`;
-        } else if (predStick && predStick.prediction === "SWITCH") {
-            explanation += ` AI-A predicts switch to ${predStick.nextGroup}.`;
-        }
-        
-        return explanation;
     }
     
     updateWeights(accStick, accExtreme, accLowMid, accMidHigh) {
@@ -175,14 +164,12 @@ class EnsembleVoterV4 {
         this.saveAccuracy();
     }
     
-    // ============ Server Sync Methods ============
-    
     setAccuracy(accuracy) {
         this.accuracy = accuracy;
     }
     
     getAccuracy() {
-        return this.accuracy;
+        return this.accuracy || 0;
     }
     
     getTotalPredictions() {
@@ -232,7 +219,6 @@ class EnsembleVoterV4 {
         } catch(e) { console.warn('Load accuracy failed:', e); }
     }
     
-    // Load from server (for syncing across devices)
     loadFromServer(data) {
         if (data) {
             this.weights = data.weights || this.weights;
@@ -243,7 +229,6 @@ class EnsembleVoterV4 {
         }
     }
     
-    // Export for server storage
     exportForServer() {
         return {
             weights: this.weights,
@@ -252,8 +237,6 @@ class EnsembleVoterV4 {
             accuracy: this.accuracy
         };
     }
-    
-    // ============ Helper Methods ============
     
     getGroupIcon(group) {
         if (group === 'LOW') return '🔴';
