@@ -1,262 +1,690 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="description" content="Lightning Dice Predictor - Four AI Pattern Recognition System">
-    <title>Lightning Dice Predictor - Four AI System</title>
-    <link rel="stylesheet" href="/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="logo">
-                <span class="lightning-icon">⚡</span>
-                <h1>Lightning Dice Predictor</h1>
-                <span class="version-badge">v5.0 - Four AI System</span>
-            </div>
-            <div class="status-badge" id="connectionStatus">
-                <span class="status-dot"></span>
-                <span id="statusText">Connecting...</span>
-            </div>
-        </header>
+/**
+ * Lightning Dice Predictor - Four AI Pattern System
+ * Main Controller with Persistent Storage & WebSocket
+ */
 
-        <!-- Data Info Bar -->
-        <div class="data-info-bar">
-            <div class="data-info-item">
-                <span class="data-label">🤖 AI Training Storage:</span>
-                <span class="data-value" id="dataSizeIndicator">0 / 20000</span>
-            </div>
-            <div class="data-info-item">
-                <span class="data-label">📊 Display History:</span>
-                <span class="data-value" id="displaySizeIndicator">0 / 1000</span>
-            </div>
-            <div class="data-info-item">
-                <span class="data-label">🕐 Last Training:</span>
-                <span class="data-value" id="lastTrainTime">--:--:--</span>
-            </div>
-            <div class="data-info-item">
-                <span class="data-label">🎯 Auto Clean:</span>
-                <span class="data-value">>1000 auto remove</span>
-            </div>
-        </div>
-
-        <div id="errorMessage" class="error-message" style="display: none;"></div>
-
-        <!-- Stats Grid -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Total Records (AI Training)</div>
-                <div class="stat-value" id="totalRounds">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Average Result</div>
-                <div class="stat-value" id="avgResult">0.00</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Most Active Group</div>
-                <div class="stat-value" id="mostActiveGroup">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Lightning Boost</div>
-                <div class="stat-value" id="lightningBoost">N/A</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Storage Capacity</div>
-                <div class="stat-value" id="storageCapacity">20K/1K</div>
-            </div>
-        </div>
-
-        <!-- Four AI Pattern Table -->
-        <div class="prediction-section">
-            <h2>🎯 FOUR AI PATTERN PREDICTION SYSTEM</h2>
+class LightningDiceApp {
+    constructor() {
+        this.apiBase = '/api';
+        this.ws = null;
+        this.allResults = [];
+        this.lastGameId = null;
+        this.autoRefreshInterval = null;
+        this.timerInterval = null;
+        this.refreshSeconds = 3;
+        this.isInitialized = false;
+        
+        this.predictionHistory = [];
+        this.currentPage = 1;
+        this.itemsPerPage = 10;
+        this.maxHistorySize = 200;
+        
+        this.groups = {
+            LOW: { name: 'LOW', range: '3-9', numbers: [3,4,5,6,7,8,9], icon: '🔴' },
+            MEDIUM: { name: 'MEDIUM', range: '10-11', numbers: [10,11], icon: '🟡' },
+            HIGH: { name: 'HIGH', range: '12-18', numbers: [12,13,14,15,16,17,18], icon: '🟢' }
+        };
+        
+        this.init();
+    }
+    
+    async init() {
+        console.log('🚀 Initializing Four AI Pattern System with Persistent Storage...');
+        this.bindEvents();
+        this.setupWebSocket();
+        
+        await this.loadStats();
+        await this.loadResults();
+        await this.loadPredictions();
+        await this.loadAIStats();
+        await this.loadPatternsFromServer();
+        
+        if (this.allResults.length >= 10) {
+            await this.trainAllModels();
+        }
+        
+        this.isInitialized = true;
+        this.updateUI();
+        this.startAutoRefresh();
+        this.startTimer();
+        this.setupCollapsibleStats();
+    }
+    
+    setupWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onopen = () => {
+            console.log('🔌 WebSocket connected');
+            this.updateConnectionStatus(true);
+        };
+        
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'new_result') {
+                console.log('🆕 New result via WebSocket:', data.data);
+                this.handleNewResult(data.data);
+            }
+        };
+        
+        this.ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            this.updateConnectionStatus(false);
+        };
+        
+        this.ws.onclose = () => {
+            console.log('WebSocket disconnected, reconnecting in 5s...');
+            setTimeout(() => this.setupWebSocket(), 5000);
+        };
+    }
+    
+    setupCollapsibleStats() {
+        const statsHeader = document.getElementById('statsHeader');
+        const statsContent = document.getElementById('statsContent');
+        const toggleIcon = document.getElementById('toggleIcon');
+        
+        if (statsHeader && statsContent && toggleIcon) {
+            statsHeader.addEventListener('click', () => {
+                const isVisible = statsContent.style.display !== 'none';
+                statsContent.style.display = isVisible ? 'none' : 'block';
+                toggleIcon.classList.toggle('open', !isVisible);
+            });
+        }
+    }
+    
+    bindEvents() {
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshData());
+        
+        const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+        if (autoRefreshToggle) {
+            autoRefreshToggle.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.startAutoRefresh();
+                    this.startTimer();
+                } else {
+                    this.stopAutoRefresh();
+                    this.stopTimer();
+                }
+            });
+        }
+        
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        if (prevBtn) prevBtn.addEventListener('click', () => this.changePage(-1));
+        if (nextBtn) nextBtn.addEventListener('click', () => this.changePage(1));
+    }
+    
+    changePage(delta) {
+        const newPage = this.currentPage + delta;
+        const totalPages = Math.ceil(this.predictionHistory.length / this.itemsPerPage);
+        if (newPage >= 1 && newPage <= totalPages) {
+            this.currentPage = newPage;
+            this.updateHistoryTable();
+        }
+    }
+    
+    async loadStats() {
+        try {
+            const response = await fetch(`${this.apiBase}/stats`);
+            if (!response.ok) throw new Error('Failed to load stats');
+            const stats = await response.json();
             
-            <div class="pattern-table">
-                <div class="pattern-header">
-                    <div class="col-ai">AI Model</div>
-                    <div class="col-input">Current Pattern</div>
-                    <div class="col-prediction">Prediction</div>
-                    <div class="col-confidence">Confidence</div>
-                    <div class="col-accuracy">Accuracy</div>
-                </div>
+            document.getElementById('totalRounds').textContent = stats.totalRounds.toLocaleString();
+            document.getElementById('avgResult').textContent = stats.avgResult;
+            document.getElementById('mostActiveGroup').textContent = stats.mostActiveGroup;
+            document.getElementById('lightningBoost').textContent = `${stats.lightningBoost}%`;
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+    
+    async loadResults() {
+        try {
+            const response = await fetch(`${this.apiBase}/results?limit=100`);
+            if (!response.ok) throw new Error('Failed to load results');
+            const data = await response.json();
+            
+            this.allResults = data.data.map(r => ({
+                id: r.id,
+                total: r.total,
+                group: r.group_name,
+                multiplier: r.multiplier,
+                timestamp: new Date(r.timestamp),
+                diceValues: r.dice_values,
+                winners: r.winners,
+                payout: r.payout
+            }));
+            
+            console.log(`✅ Loaded ${this.allResults.length} results from database`);
+            
+            if (this.allResults.length > 0) {
+                this.lastGameId = this.allResults[0].id;
+                this.updateRecentResultsDisplay();
+                this.updateStatisticsTable();
+                this.updateGroupProbabilities();
+            }
+        } catch (error) {
+            console.error('Error loading results:', error);
+        }
+    }
+    
+    async loadPredictions() {
+        try {
+            const response = await fetch(`${this.apiBase}/predictions?limit=200`);
+            if (!response.ok) throw new Error('Failed to load predictions');
+            const predictions = await response.json();
+            
+            this.predictionHistory = predictions.map(p => ({
+                time: new Date(p.result_time).toLocaleTimeString(),
+                dice: p.dice_values,
+                total: p.total,
+                actualGroup: p.actual_group,
+                predStick: p.ai_stick_group,
+                predExtreme: p.ai_extreme_group,
+                predLowMid: p.ai_low_mid_group,
+                predMidHigh: p.ai_mid_high_group,
+                ensemble: p.ensemble_group,
+                correctStick: p.correct_stick === 1,
+                correctExtreme: p.correct_extreme === 1,
+                correctLowMid: p.correct_low_mid === 1,
+                correctMidHigh: p.correct_mid_high === 1,
+                correctEnsemble: p.correct_ensemble === 1,
+                timestamp: new Date(p.result_time)
+            }));
+            
+            console.log(`✅ Loaded ${this.predictionHistory.length} predictions from database`);
+            this.updateHistoryTable();
+        } catch (error) {
+            console.error('Error loading predictions:', error);
+        }
+    }
+    
+    async loadAIStats() {
+        try {
+            const response = await fetch(`${this.apiBase}/ai-stats`);
+            if (!response.ok) throw new Error('Failed to load AI stats');
+            const stats = await response.json();
+            
+            stats.forEach(stat => {
+                if (stat.ai_name === 'AI_Stick') window.AI_Stick?.setAccuracy(stat.accuracy);
+                if (stat.ai_name === 'AI_ExtremeSwitch') window.AI_ExtremeSwitch?.setAccuracy(stat.accuracy);
+                if (stat.ai_name === 'AI_LowMidSwitch') window.AI_LowMidSwitch?.setAccuracy(stat.accuracy);
+                if (stat.ai_name === 'AI_MidHighSwitch') window.AI_MidHighSwitch?.setAccuracy(stat.accuracy);
+            });
+        } catch (error) {
+            console.error('Error loading AI stats:', error);
+        }
+    }
+    
+    async loadPatternsFromServer() {
+        const aiNames = ['AI_Stick', 'AI_ExtremeSwitch', 'AI_LowMidSwitch', 'AI_MidHighSwitch'];
+        
+        for (const aiName of aiNames) {
+            try {
+                const response = await fetch(`${this.apiBase}/load-pattern/${aiName}`);
+                if (!response.ok) continue;
+                const patterns = await response.json();
                 
-                <div class="pattern-row" id="aiStickRow">
-                    <div class="col-ai"><span class="ai-badge ai-stick">🎯 AI-A</span><br><small>Stick Detector</small></div>
-                    <div class="col-input" id="aiStickInput">--</div>
-                    <div class="col-prediction" id="aiStickPred">--</div>
-                    <div class="col-confidence" id="aiStickConf">--</div>
-                    <div class="col-accuracy" id="aiStickAcc">--</div>
+                const ai = window[aiName];
+                if (ai && patterns) {
+                    ai.loadFromServer(patterns);
+                }
+            } catch (error) {
+                console.error(`Error loading patterns for ${aiName}:`, error);
+            }
+        }
+    }
+    
+    async savePatternToServer(aiName, patternKey, streakValue, maxStreak, breakData) {
+        try {
+            await fetch(`${this.apiBase}/save-pattern`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ai_name: aiName, pattern_key: patternKey, streak_value: streakValue, max_streak: maxStreak, break_data: breakData })
+            });
+        } catch (error) {
+            console.error('Error saving pattern:', error);
+        }
+    }
+    
+    async trainAllModels() {
+        console.log('🎓 Training all 4 AI models...');
+        
+        const historyInOrder = [...this.allResults].reverse();
+        
+        if (window.AI_Stick) window.AI_Stick.train(historyInOrder);
+        if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.train(historyInOrder);
+        if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.train(historyInOrder);
+        if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.train(historyInOrder);
+        
+        if (window.EnsembleVoterV4) {
+            const accStick = window.AI_Stick?.getAccuracy() || 60;
+            const accExtreme = window.AI_ExtremeSwitch?.getAccuracy() || 60;
+            const accLowMid = window.AI_LowMidSwitch?.getAccuracy() || 60;
+            const accMidHigh = window.AI_MidHighSwitch?.getAccuracy() || 60;
+            window.EnsembleVoterV4.updateWeights(accStick, accExtreme, accLowMid, accMidHigh);
+        }
+        
+        console.log('✅ All 4 AI models trained!');
+    }
+    
+    getLastNResults(n) {
+        return this.allResults.slice(0, n).map(r => r.group);
+    }
+    
+    async handleNewResult(result) {
+        const lastResults = this.getLastNResults(4);
+        const currentGroup = lastResults.length > 0 ? lastResults[0] : result.group;
+        const previousGroup = lastResults.length >= 2 ? lastResults[1] : currentGroup;
+        
+        const predStick = window.AI_Stick ? window.AI_Stick.predict(currentGroup, previousGroup) : null;
+        const predExtreme = window.AI_ExtremeSwitch ? window.AI_ExtremeSwitch.predict(currentGroup, previousGroup) : null;
+        const predLowMid = window.AI_LowMidSwitch ? window.AI_LowMidSwitch.predict(currentGroup, previousGroup) : null;
+        const predMidHigh = window.AI_MidHighSwitch ? window.AI_MidHighSwitch.predict(currentGroup, previousGroup) : null;
+        
+        const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
+        
+        const predStickGroup = this.extractPredictionGroup(predStick);
+        const predExtremeGroup = this.extractPredictionGroup(predExtreme);
+        const predLowMidGroup = this.extractPredictionGroup(predLowMid);
+        const predMidHighGroup = this.extractPredictionGroup(predMidHigh);
+        const ensembleGroup = ensemble?.final?.group || 'MEDIUM';
+        
+        const correct = {
+            stick: predStickGroup === result.group,
+            extreme: predExtremeGroup === result.group,
+            low_mid: predLowMidGroup === result.group,
+            mid_high: predMidHighGroup === result.group,
+            ensemble: ensembleGroup === result.group
+        };
+        
+        await this.savePredictionToServer(result.id, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup, correct);
+        
+        this.allResults.unshift({
+            id: result.id,
+            total: result.total,
+            group: result.group_name,
+            multiplier: result.multiplier,
+            timestamp: new Date(result.timestamp),
+            diceValues: result.dice_values,
+            winners: result.winners,
+            payout: result.payout
+        });
+        
+        this.lastGameId = result.id;
+        
+        if (window.AI_Stick) window.AI_Stick.updateWithResult({ group: result.group_name }, previousGroup);
+        if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.updateWithResult({ group: result.group_name }, previousGroup);
+        if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.updateWithResult({ group: result.group_name }, previousGroup);
+        if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.updateWithResult({ group: result.group_name }, previousGroup);
+        
+        if (window.AI_Stick) window.AI_Stick.recordPredictionResult(correct.stick);
+        if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.recordPredictionResult(correct.extreme);
+        if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.recordPredictionResult(correct.low_mid);
+        if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.recordPredictionResult(correct.mid_high);
+        if (window.EnsembleVoterV4) window.EnsembleVoterV4.recordPredictionResult(correct.ensemble);
+        
+        await this.updateAIStats();
+        
+        this.updateUI();
+        this.animateNewResult();
+    }
+    
+    async savePredictionToServer(resultId, stick, extreme, lowMid, midHigh, ensemble, correct) {
+        try {
+            await fetch(`${this.apiBase}/save-prediction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    result_id: resultId,
+                    ai_stick_group: stick,
+                    ai_extreme_group: extreme,
+                    ai_low_mid_group: lowMid,
+                    ai_mid_high_group: midHigh,
+                    ensemble_group: ensemble,
+                    correct: correct
+                })
+            });
+        } catch (error) {
+            console.error('Error saving prediction:', error);
+        }
+    }
+    
+    async updateAIStats() {
+        const aiModels = [
+            { name: 'AI_Stick', ai: window.AI_Stick },
+            { name: 'AI_ExtremeSwitch', ai: window.AI_ExtremeSwitch },
+            { name: 'AI_LowMidSwitch', ai: window.AI_LowMidSwitch },
+            { name: 'AI_MidHighSwitch', ai: window.AI_MidHighSwitch }
+        ];
+        
+        for (const model of aiModels) {
+            if (model.ai) {
+                try {
+                    await fetch(`${this.apiBase}/update-ai-stats`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ai_name: model.name, correct: true })
+                    });
+                } catch (error) {
+                    console.error(`Error updating stats for ${model.name}:`, error);
+                }
+            }
+        }
+    }
+    
+    extractPredictionGroup(prediction) {
+        if (!prediction) return 'MEDIUM';
+        if (prediction.prediction === "STICK" && prediction.nextGroup) return prediction.nextGroup;
+        if (prediction.prediction === "SWITCH" && prediction.nextGroup) return prediction.nextGroup;
+        if (prediction.prediction === "CONTINUE" && prediction.pattern) {
+            const parts = prediction.pattern.split("→");
+            if (parts.length >= 2) return parts[1].trim();
+        }
+        if (prediction.prediction === "BREAK" && prediction.nextGroup) return prediction.nextGroup;
+        return 'MEDIUM';
+    }
+    
+    updateHistoryTable() {
+        const tbody = document.getElementById('historyTableBody');
+        if (!tbody) return;
+        
+        const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+        const pageItems = this.predictionHistory.slice(startIndex, startIndex + this.itemsPerPage);
+        
+        if (pageItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8">No history data yet...</td></tr>';
+            this.updatePaginationControls();
+            return;
+        }
+        
+        tbody.innerHTML = pageItems.map(item => {
+            const getIcon = (g) => {
+                if (g === 'LOW') return '🔴';
+                if (g === 'MEDIUM') return '🟡';
+                if (g === 'HIGH') return '🟢';
+                return '⚪';
+            };
+            
+            const getBadgeClass = (correct) => correct ? 'correct' : 'incorrect';
+            
+            return `
+                <tr>
+                    <td>${item.time}</td>
+                    <td class="dice-values">🎲 ${item.dice}</td>
+                    <td><strong>${item.total}</strong> <small>(${item.actualGroup})</small></td>
+                    <td><span class="prediction-badge ${getBadgeClass(item.correctStick)}">${getIcon(item.predStick)} ${item.predStick} ${item.correctStick ? '✓' : '✗'}</span></td>
+                    <td><span class="prediction-badge ${getBadgeClass(item.correctExtreme)}">${getIcon(item.predExtreme)} ${item.predExtreme} ${item.correctExtreme ? '✓' : '✗'}</span></td>
+                    <td><span class="prediction-badge ${getBadgeClass(item.correctLowMid)}">${getIcon(item.predLowMid)} ${item.predLowMid} ${item.correctLowMid ? '✓' : '✗'}</span></td>
+                    <td><span class="prediction-badge ${getBadgeClass(item.correctMidHigh)}">${getIcon(item.predMidHigh)} ${item.predMidHigh} ${item.correctMidHigh ? '✓' : '✗'}</span></td>
+                    <td><span class="prediction-badge ${getBadgeClass(item.correctEnsemble)}">${getIcon(item.ensemble)} ${item.ensemble} ${item.correctEnsemble ? '✓' : '✗'}</span></td>
+                </tr>
+            `;
+        }).join('');
+        
+        this.updatePaginationControls();
+    }
+    
+    updatePaginationControls() {
+        const totalPages = Math.ceil(this.predictionHistory.length / this.itemsPerPage);
+        const paginationInfo = document.getElementById('paginationInfo');
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        
+        if (paginationInfo) paginationInfo.textContent = `Page ${this.currentPage} of ${totalPages || 1}`;
+        if (prevBtn) prevBtn.disabled = this.currentPage === 1;
+        if (nextBtn) nextBtn.disabled = this.currentPage === totalPages || totalPages === 0;
+    }
+    
+    updateUI() {
+        this.updateAIPredictions();
+    }
+    
+    updateAIPredictions() {
+        const lastResults = this.getLastNResults(4);
+        if (lastResults.length < 4) return;
+        
+        const currentGroup = lastResults[0];
+        const previousGroup = lastResults.length >= 2 ? lastResults[1] : currentGroup;
+        
+        const predStick = window.AI_Stick ? window.AI_Stick.predict(currentGroup, previousGroup) : null;
+        const predExtreme = window.AI_ExtremeSwitch ? window.AI_ExtremeSwitch.predict(currentGroup, previousGroup) : null;
+        const predLowMid = window.AI_LowMidSwitch ? window.AI_LowMidSwitch.predict(currentGroup, previousGroup) : null;
+        const predMidHigh = window.AI_MidHighSwitch ? window.AI_MidHighSwitch.predict(currentGroup, previousGroup) : null;
+        
+        const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
+        
+        if (predStick) {
+            document.getElementById('aiStickInput').textContent = `${previousGroup} → ${currentGroup}`;
+            document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${predStick.prediction === "STICK" ? `${predStick.nextGroup} (Stick)` : `Switch to ${predStick.nextGroup}`}`;
+            document.getElementById('aiStickConf').textContent = `${predStick.confidence}%`;
+            document.getElementById('aiStickAcc').textContent = `${predStick.accuracy.toFixed(1)}%`;
+        }
+        
+        if (predExtreme) {
+            document.getElementById('aiExtremeInput').textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
+            let extremePredText = predExtreme.prediction === "CONTINUE" ? `Continue ${predExtreme.pattern?.split("→")[1]?.trim() || 'MEDIUM'}` : `Break to ${predExtreme.nextGroup}`;
+            document.getElementById('aiExtremePred').innerHTML = `${this.getGroupIcon(predExtreme.nextGroup)} ${extremePredText}`;
+            document.getElementById('aiExtremeConf').textContent = `${predExtreme.confidence}%`;
+            document.getElementById('aiExtremeAcc').textContent = `${predExtreme.accuracy.toFixed(1)}%`;
+        }
+        
+        if (predLowMid) {
+            document.getElementById('aiLowMidInput').textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
+            let lowMidPredText = predLowMid.prediction === "CONTINUE" ? `Continue ${predLowMid.pattern?.split("→")[1]?.trim() || 'MEDIUM'}` : `Break to ${predLowMid.nextGroup}`;
+            document.getElementById('aiLowMidPred').innerHTML = `${this.getGroupIcon(predLowMid.nextGroup)} ${lowMidPredText}`;
+            document.getElementById('aiLowMidConf').textContent = `${predLowMid.confidence}%`;
+            document.getElementById('aiLowMidAcc').textContent = `${predLowMid.accuracy.toFixed(1)}%`;
+        }
+        
+        if (predMidHigh) {
+            document.getElementById('aiMidHighInput').textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
+            let midHighPredText = predMidHigh.prediction === "CONTINUE" ? `Continue ${predMidHigh.pattern?.split("→")[1]?.trim() || 'HIGH'}` : `Break to ${predMidHigh.nextGroup}`;
+            document.getElementById('aiMidHighPred').innerHTML = `${this.getGroupIcon(predMidHigh.nextGroup)} ${midHighPredText}`;
+            document.getElementById('aiMidHighConf').textContent = `${predMidHigh.confidence}%`;
+            document.getElementById('aiMidHighAcc').textContent = `${predMidHigh.accuracy.toFixed(1)}%`;
+        }
+        
+        if (ensemble) {
+            document.getElementById('voteCount').textContent = `(${ensemble.final.agreement}/4 AI agree)`;
+            document.getElementById('finalIcon').textContent = this.getGroupIcon(ensemble.final.group);
+            document.getElementById('finalName').textContent = ensemble.final.group;
+            document.getElementById('finalRange').textContent = `(${this.getGroupRange(ensemble.final.group)})`;
+            document.getElementById('confidenceFill').style.width = `${ensemble.final.confidence}%`;
+            document.getElementById('finalConfidence').textContent = `${ensemble.final.confidence}%`;
+            document.getElementById('finalExplanation').textContent = ensemble.explanation;
+            
+            const weights = ensemble.weights;
+            document.getElementById('finalWeights').innerHTML = `Weights: Stick ${(weights.stick*100).toFixed(0)}% | Extreme ${(weights.extremeSwitch*100).toFixed(0)}% | Low-Mid ${(weights.lowMidSwitch*100).toFixed(0)}% | Mid-High ${(weights.midHighSwitch*100).toFixed(0)}%`;
+        }
+    }
+    
+    getGroupIcon(group) {
+        if (group === 'LOW') return '🔴';
+        if (group === 'MEDIUM') return '🟡';
+        if (group === 'HIGH') return '🟢';
+        return '⚪';
+    }
+    
+    getGroupRange(group) {
+        if (group === 'LOW') return '3-9';
+        if (group === 'MEDIUM') return '10-11';
+        if (group === 'HIGH') return '12-18';
+        return '-';
+    }
+    
+    updateStatisticsTable() {
+        const numberStats = {};
+        this.allResults.forEach(result => {
+            if (!numberStats[result.total]) {
+                numberStats[result.total] = { count: 0, lastSeen: result.timestamp };
+            }
+            numberStats[result.total].count++;
+            if (result.timestamp > numberStats[result.total].lastSeen) {
+                numberStats[result.total].lastSeen = result.timestamp;
+            }
+        });
+        
+        const tbody = document.getElementById('statsTableBody');
+        if (!tbody) return;
+        
+        const sortedNumbers = Object.keys(numberStats).sort((a,b) => a - b);
+        const total = this.allResults.length;
+        
+        tbody.innerHTML = sortedNumbers.map(num => {
+            const stat = numberStats[num];
+            const group = this.getGroup(parseInt(num));
+            const groupClass = `group-${group.toLowerCase()}`;
+            const percentage = total > 0 ? ((stat.count / total) * 100).toFixed(1) : 0;
+            const timeAgo = this.getTimeAgo(stat.lastSeen);
+            
+            return `
+                <tr>
+                    <td><strong>${num}</strong></td>
+                    <td><span class="group-badge ${groupClass}">${group}</span></td>
+                    <td>${stat.count}</td>
+                    <td>${percentage}%</td>
+                    <td>${timeAgo}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    getTimeAgo(date) {
+        const diffMins = Math.floor((new Date() - new Date(date)) / 60000);
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+        return `${Math.floor(diffMins / 1440)}d ago`;
+    }
+    
+    updateGroupProbabilities() {
+        const recentResults = this.allResults.slice(0, 10);
+        const recentCount = { LOW: 0, MEDIUM: 0, HIGH: 0 };
+        recentResults.forEach(r => { if (r && r.group) recentCount[r.group]++; });
+        
+        const total = recentResults.length;
+        document.getElementById('lowProb').textContent = total > 0 ? `${Math.round((recentCount.LOW / total) * 100)}%` : '0%';
+        document.getElementById('mediumProb').textContent = total > 0 ? `${Math.round((recentCount.MEDIUM / total) * 100)}%` : '0%';
+        document.getElementById('highProb').textContent = total > 0 ? `${Math.round((recentCount.HIGH / total) * 100)}%` : '0%';
+        
+        document.getElementById('lowTrend').textContent = this.getTrendText(recentCount.LOW, total);
+        document.getElementById('mediumTrend').textContent = this.getTrendText(recentCount.MEDIUM, total);
+        document.getElementById('highTrend').textContent = this.getTrendText(recentCount.HIGH, total);
+    }
+    
+    getTrendText(count, total) {
+        const percentage = total > 0 ? (count / total) * 100 : 0;
+        if (percentage > 40) return '🔥 Hot streak';
+        if (percentage > 20) return '📈 Warming up';
+        if (percentage > 10) return '⚖️ Average';
+        return '❄️ Cooling down';
+    }
+    
+    updateRecentResultsDisplay() {
+        const resultsGrid = document.getElementById('resultsGrid');
+        if (!resultsGrid) return;
+        
+        if (this.allResults.length === 0) {
+            resultsGrid.innerHTML = '<div class="loading">No results yet</div>';
+            return;
+        }
+        
+        const recentResults = this.allResults.slice(0, 10);
+        resultsGrid.innerHTML = recentResults.map(result => {
+            const isLightning = result.multiplier > 10;
+            const time = result.timestamp.toLocaleTimeString();
+            const groupIcon = this.groups[result.group]?.icon || '🎲';
+            
+            return `
+                <div class="result-card ${isLightning ? 'lightning' : ''}">
+                    <div class="result-number">${groupIcon} ${result.total}</div>
+                    <div class="result-multiplier">${result.multiplier}x</div>
+                    <div class="result-time">${time}</div>
+                    <div class="result-dice">${result.diceValues}</div>
                 </div>
-                
-                <div class="pattern-row" id="aiExtremeRow">
-                    <div class="col-ai"><span class="ai-badge ai-extreme">🔄 AI-B</span><br><small>Extreme Switch</small></div>
-                    <div class="col-input" id="aiExtremeInput">--</div>
-                    <div class="col-prediction" id="aiExtremePred">--</div>
-                    <div class="col-confidence" id="aiExtremeConf">--</div>
-                    <div class="col-accuracy" id="aiExtremeAcc">--</div>
+            `;
+        }).join('');
+        
+        if (this.allResults.length > 0 && this.allResults[0].winners) {
+            resultsGrid.innerHTML += `
+                <div class="winners-info">
+                    🏆 Winners: ${this.allResults[0].winners} | 💰 Total Payout: $${this.allResults[0].payout?.toLocaleString() || 0}
                 </div>
-                
-                <div class="pattern-row" id="aiLowMidRow">
-                    <div class="col-ai"><span class="ai-badge ai-lowmid">↗️ AI-C</span><br><small>Low-Mid Switch</small></div>
-                    <div class="col-input" id="aiLowMidInput">--</div>
-                    <div class="col-prediction" id="aiLowMidPred">--</div>
-                    <div class="col-confidence" id="aiLowMidConf">--</div>
-                    <div class="col-accuracy" id="aiLowMidAcc">--</div>
-                </div>
-                
-                <div class="pattern-row" id="aiMidHighRow">
-                    <div class="col-ai"><span class="ai-badge ai-midhigh">↘️ AI-D</span><br><small>Mid-High Switch</small></div>
-                    <div class="col-input" id="aiMidHighInput">--</div>
-                    <div class="col-prediction" id="aiMidHighPred">--</div>
-                    <div class="col-confidence" id="aiMidHighConf">--</div>
-                    <div class="col-accuracy" id="aiMidHighAcc">--</div>
-                </div>
-            </div>
+            `;
+        }
+    }
+    
+    updateConnectionStatus(isConnected) {
+        const statusText = document.getElementById('statusText');
+        const statusDot = document.querySelector('.status-dot');
+        if (statusText) statusText.textContent = isConnected ? 'Connected' : 'Reconnecting...';
+        if (statusDot) statusDot.style.background = isConnected ? '#4ade80' : '#ef4444';
+    }
+    
+    animateNewResult() {
+        const predictionBox = document.querySelector('.prediction-section');
+        if (predictionBox) {
+            predictionBox.style.animation = 'none';
+            setTimeout(() => predictionBox.style.animation = 'slideIn 0.3s ease', 10);
+        }
+    }
+    
+    async refreshData() {
+        await this.loadStats();
+        await this.loadResults();
+        await this.loadPredictions();
+        this.updateUI();
+    }
+    
+    startAutoRefresh() {
+        if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
+        this.autoRefreshInterval = setInterval(() => this.refreshData(), this.refreshSeconds * 1000);
+    }
+    
+    stopAutoRefresh() {
+        if (this.autoRefreshInterval) {
+            clearInterval(this.autoRefreshInterval);
+            this.autoRefreshInterval = null;
+        }
+    }
+    
+    startTimer() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        let seconds = this.refreshSeconds;
+        const timerElement = document.getElementById('refreshTimer');
+        
+        this.timerInterval = setInterval(() => {
+            seconds--;
+            if (seconds < 0) seconds = this.refreshSeconds;
+            if (timerElement) timerElement.textContent = `${seconds}s`;
+        }, 1000);
+    }
+    
+    stopTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+    
+    showError(message) {
+        const errorDiv = document.getElementById('errorMessage');
+        if (errorDiv) {
+            errorDiv.textContent = `⚠️ ${message}`;
+            errorDiv.style.display = 'block';
+            setTimeout(() => errorDiv.style.display = 'none', 5000);
+        }
+    }
+}
 
-            <!-- Ensemble Final Prediction -->
-            <div class="final-prediction-card">
-                <div class="final-header">
-                    <span class="final-icon">🏆</span>
-                    <span class="final-title">ENSEMBLE FINAL PREDICTION</span>
-                    <span class="final-vote" id="voteCount">(0/4 AI agree)</span>
-                </div>
-                <div class="final-group" id="finalGroup">
-                    <span class="final-group-icon" id="finalIcon">🎯</span>
-                    <span class="final-group-name" id="finalName">--</span>
-                    <span class="final-group-range" id="finalRange">--</span>
-                </div>
-                <div class="final-confidence">
-                    <div class="confidence-meter">
-                        <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
-                    </div>
-                    <span class="confidence-text" id="finalConfidence">0%</span>
-                </div>
-                <div class="final-explanation" id="finalExplanation">Waiting for data...</div>
-                <div class="final-weights" id="finalWeights"></div>
-            </div>
-        </div>
-
-        <!-- Group Statistics -->
-        <div class="group-stats">
-            <div class="group-stat low-group">
-                <div class="group-header">
-                    <span class="group-icon">🔴</span>
-                    <span class="group-title">LOW</span>
-                    <span class="group-range">(3-9)</span>
-                </div>
-                <div class="group-probability" id="lowProb">0%</div>
-                <div class="group-trend" id="lowTrend">-</div>
-            </div>
-            <div class="group-stat medium-group">
-                <div class="group-header">
-                    <span class="group-icon">🟡</span>
-                    <span class="group-title">MEDIUM</span>
-                    <span class="group-range">(10-11)</span>
-                </div>
-                <div class="group-probability" id="mediumProb">0%</div>
-                <div class="group-trend" id="mediumTrend">-</div>
-            </div>
-            <div class="group-stat high-group">
-                <div class="group-header">
-                    <span class="group-icon">🟢</span>
-                    <span class="group-title">HIGH</span>
-                    <span class="group-range">(12-18)</span>
-                </div>
-                <div class="group-probability" id="highProb">0%</div>
-                <div class="group-trend" id="highTrend">-</div>
-            </div>
-        </div>
-
-        <!-- Prediction History Table -->
-        <div class="history-section">
-            <div class="section-header">
-                <h2>📋 PREDICTION HISTORY (Last 1000 Results)</h2>
-                <div class="header-buttons">
-                    <button class="clear-btn" id="clearHistoryBtn" title="Clear all prediction history">🗑️ Clear History</button>
-                    <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
-                </div>
-            </div>
-            <div class="table-container">
-                <table class="history-table" id="historyTable">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Dice</th>
-                            <th>Total</th>
-                            <th>AI-A<br>Stick</th>
-                            <th>AI-B<br>Extreme</th>
-                            <th>AI-C<br>Low-Mid</th>
-                            <th>AI-D<br>Mid-High</th>
-                            <th>ENSEMBLE</th>
-                        </tr>
-                    </thead>
-                    <tbody id="historyTableBody">
-                        <tr><td colspan="8">Loading history...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="pagination-controls">
-                <button class="pagination-btn" id="prevPageBtn" disabled>◀ Previous</button>
-                <span class="pagination-info" id="paginationInfo">Page 1 of 1</span>
-                <button class="pagination-btn" id="nextPageBtn" disabled>Next ▶</button>
-            </div>
-        </div>
-
-        <!-- Recent Results -->
-        <div class="recent-section">
-            <div class="section-header">
-                <h2>📊 Recent Results (Last 10)</h2>
-            </div>
-            <div class="results-grid" id="resultsGrid">
-                <div class="loading">Loading results...</div>
-            </div>
-        </div>
-
-        <!-- Statistics Table -->
-        <div class="stats-section collapsible-section">
-            <div class="stats-header" id="statsHeader">
-                <h2>📈 Number Statistics (From AI Training Data)</h2>
-                <span class="toggle-icon" id="toggleIcon">▶</span>
-            </div>
-            <div class="stats-content" id="statsContent" style="display: none;">
-                <div class="table-container">
-                    <table class="stats-table" id="statsTable">
-                        <thead>
-                            <tr>
-                                <th>Number</th>
-                                <th>Group</th>
-                                <th>Frequency</th>
-                                <th>Percentage</th>
-                                <th>Last Seen</th>
-                            </tr>
-                        </thead>
-                        <tbody id="statsTableBody">
-                            <tr><td colspan="5">Loading statistics...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Auto Refresh Control -->
-        <div class="auto-refresh-control">
-            <label class="switch">
-                <input type="checkbox" id="autoRefreshToggle" checked>
-                <span class="slider round"></span>
-            </label>
-            <span>Auto Refresh (3s)</span>
-            <span class="refresh-timer" id="refreshTimer">3s</span>
-        </div>
-    </div>
-
-    <!-- Load AI Models in order -->
-    <script src="/ai/ai-stick.js"></script>
-    <script src="/ai/ai-extreme-switch.js"></script>
-    <script src="/ai/ai-low-mid-switch.js"></script>
-    <script src="/ai/ai-mid-high-switch.js"></script>
-    <script src="/ai/ensemble-v4.js"></script>
-    <script src="/script.js"></script>
-</body>
-</html>
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        window.app = new LightningDiceApp();
+    });
+} else {
+    window.app = new LightningDiceApp();
+}
