@@ -2,11 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <meta name="description" content="Lightning Dice Predictor - Four AI Pattern Recognition System">
+    <meta name="theme-color" content="#1a1a3e">
     <title>Lightning Dice Predictor - Four AI System</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css?v=4">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Force fresh load for mobile -->
+    <script>
+        (function() {
+            console.log('📱 Device:', navigator.userAgent);
+            if (/Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                console.log('📱 Mobile device detected');
+                // Clear any stale AI flag
+                if (sessionStorage.getItem('ai_loaded') === 'old') {
+                    sessionStorage.removeItem('ai_loaded');
+                }
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="container">
@@ -45,7 +60,7 @@
 
         <div id="errorMessage" class="error-message" style="display: none;"></div>
 
-        <!-- Stats Grid - 5 cards with all IDs -->
+        <!-- Stats Grid -->
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-label">Total Records (AI Training)</div>
@@ -174,7 +189,7 @@
             <div class="section-header">
                 <h2>📋 PREDICTION HISTORY (Last 1000 Results)</h2>
                 <div class="header-buttons">
-                    <button class="clear-btn" id="clearHistoryBtn" title="Clear all prediction history from display">🗑️ Clear History</button>
+                    <button class="clear-btn" id="clearHistoryBtn" title="Clear all prediction history">🗑️ Clear History</button>
                     <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
                 </div>
             </div>
@@ -193,9 +208,9 @@
                         </tr>
                     </thead>
                     <tbody id="historyTableBody">
-                        <tr><td colspan="8">Loading history...</td></tr>
+                        <tr><td colspan="8">Loading history...<\/td></tr>
                     </tbody>
-                </table>
+                \d table
             </div>
             <div class="pagination-controls">
                 <button class="pagination-btn" id="prevPageBtn" disabled>◀ Previous</button>
@@ -233,7 +248,7 @@
                             </tr>
                         </thead>
                         <tbody id="statsTableBody">
-                            <tr><td colspan="5">Loading statistics...</td></tr>
+                            <tr><td colspan="5">Loading statistics...<\/td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -251,12 +266,33 @@
         </div>
     </div>
 
-    <!-- Load AI Models in order -->
-    <script src="/ai/ai-stick.js"></script>
-    <script src="/ai/ai-extreme-switch.js"></script>
-    <script src="/ai/ai-low-mid-switch.js"></script>
-    <script src="/ai/ai-mid-high-switch.js"></script>
-    <script src="/ai/ensemble-v4.js"></script>
-    <script src="/script.js"></script>
+    <!-- Load AI Models from public/ai/ folder with cache busting -->
+    <script src="/ai/ai-stick.js?v=4"></script>
+    <script src="/ai/ai-extreme-switch.js?v=4"></script>
+    <script src="/ai/ai-low-mid-switch.js?v=4"></script>
+    <script src="/ai/ai-mid-high-switch.js?v=4"></script>
+    <script src="/ai/ensemble-v4.js?v=4"></script>
+    <script src="/script.js?v=4"></script>
+    
+    <!-- Mobile retry mechanism -->
+    <script>
+        (function() {
+            if (/Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                console.log('📱 Mobile device - checking AI load status...');
+                setTimeout(function() {
+                    if (typeof window.AI_Stick === 'undefined') {
+                        console.log('⚠️ AI not loaded on mobile, retrying...');
+                        location.reload();
+                    } else if (typeof window.AI_Stick.getAccuracy === 'undefined') {
+                        console.log('⚠️ AI partially loaded, retrying...');
+                        location.reload();
+                    } else {
+                        console.log('✅ AI loaded successfully on mobile');
+                        sessionStorage.setItem('ai_loaded', 'true');
+                    }
+                }, 5000);
+            }
+        })();
+    </script>
 </body>
 </html>
