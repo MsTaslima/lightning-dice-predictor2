@@ -1,7 +1,7 @@
 {
   "name": "lightning-dice-predictor",
-  "version": "4.0.0",
-  "description": "Lightning Dice Prediction Tool - Three AI Pattern System",
+  "version": "5.0.0",
+  "description": "Lightning Dice Prediction Tool - Four AI Pattern System with Persistent Storage",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,20 +12,21 @@
     "prediction",
     "pattern-recognition",
     "ai",
-    "three-ai"
+    "four-ai"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "sqlite3": "^5.1.6",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "node": ">=18.0.0"
   }
 }
