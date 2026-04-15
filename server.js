@@ -23,7 +23,7 @@ let serverAIModelsData = {
     ensembleWeights: null
 };
 
-// File paths for persistence (Railway-এ কাজ করবে)
+// File paths for persistence
 const DATA_DIR = path.join(__dirname, 'data');
 const AI_TRAINING_FILE = path.join(DATA_DIR, 'ai_training.json');
 const PREDICTION_HISTORY_FILE = path.join(DATA_DIR, 'prediction_history.json');
@@ -32,6 +32,7 @@ const AI_MODELS_FILE = path.join(DATA_DIR, 'ai_models.json');
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log('📁 Created data directory:', DATA_DIR);
 }
 
 // Load data from files on startup
@@ -92,7 +93,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static('public'));
+
+// Serve static files from 'public' folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Helper function to get headers for casino.org API
 const getApiHeaders = () => {
@@ -115,7 +118,7 @@ const asyncHandler = (fn) => (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
 };
 
-// ========== NEW API ENDPOINTS FOR SERVER STORAGE ==========
+// ========== SERVER STORAGE API ENDPOINTS ==========
 
 // Save AI Training Data to Server
 app.post('/api/server/save-training', asyncHandler(async (req, res) => {
@@ -302,6 +305,8 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System (SERVER STORAGE MODE)`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`💾 Server Storage: ${serverAITrainingData.length} training records, ${serverPredictionHistory.length} history records`);
+    console.log(`📁 Public folder: ${path.join(__dirname, 'public')}`);
+    console.log(`📁 Data folder: ${DATA_DIR}`);
     console.log(`🔄 Latest API: http://localhost:${PORT}/api/latest`);
     console.log(`📜 History API: http://localhost:${PORT}/api/history`);
     console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
