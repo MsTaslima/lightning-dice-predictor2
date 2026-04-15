@@ -2,313 +2,402 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
+const WebSocket = require('ws');
 const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ========== GLOBAL SERVER STORAGE ==========
-// সব ডিভাইস থেকে একই ডাটা দেখানোর জন্য সার্ভারে স্টোর করছি
-
-// AI Training Data Storage (20,000 records)
-let serverAITrainingData = [];
-let serverPredictionHistory = [];
-
-// AI Models Data Storage
-let serverAIModelsData = {
-    stick: null,
-    extremeSwitch: null,
-    lowMidSwitch: null,
-    midHighSwitch: null,
-    ensembleWeights: null
-};
-
-// File paths for persistence
-const DATA_DIR = path.join(__dirname, 'data');
-const AI_TRAINING_FILE = path.join(DATA_DIR, 'ai_training.json');
-const PREDICTION_HISTORY_FILE = path.join(DATA_DIR, 'prediction_history.json');
-const AI_MODELS_FILE = path.join(DATA_DIR, 'ai_models.json');
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    console.log('📁 Created data directory:', DATA_DIR);
+// Ensure database directory exists
+const dbDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
 }
 
-// Load data from files on startup
-function loadDataFromFiles() {
-    try {
-        if (fs.existsSync(AI_TRAINING_FILE)) {
-            serverAITrainingData = JSON.parse(fs.readFileSync(AI_TRAINING_FILE, 'utf8'));
-            console.log(`✅ Loaded ${serverAITrainingData.length} AI training records from file`);
-        }
-        if (fs.existsSync(PREDICTION_HISTORY_FILE)) {
-            serverPredictionHistory = JSON.parse(fs.readFileSync(PREDICTION_HISTORY_FILE, 'utf8'));
-            console.log(`✅ Loaded ${serverPredictionHistory.length} prediction history records from file`);
-        }
-        if (fs.existsSync(AI_MODELS_FILE)) {
-            serverAIModelsData = JSON.parse(fs.readFileSync(AI_MODELS_FILE, 'utf8'));
-            console.log(`✅ Loaded AI models data from file`);
-        }
-    } catch (e) {
-        console.error('Error loading data from files:', e);
-    }
-}
+// Database setup
+const db = new sqlite3.Database(path.join(dbDir, 'lightning_dice.db'));
 
-// Save data to files
-function saveAITrainingDataToFile() {
-    try {
-        fs.writeFileSync(AI_TRAINING_FILE, JSON.stringify(serverAITrainingData.slice(0, 20000)));
-        console.log(`💾 Saved ${serverAITrainingData.length} AI training records to file`);
-    } catch (e) {
-        console.error('Error saving AI training data:', e);
-    }
-}
-
-function savePredictionHistoryToFile() {
-    try {
-        fs.writeFileSync(PREDICTION_HISTORY_FILE, JSON.stringify(serverPredictionHistory.slice(0, 1000)));
-        console.log(`💾 Saved ${serverPredictionHistory.length} prediction history records to file`);
-    } catch (e) {
-        console.error('Error saving prediction history:', e);
-    }
-}
-
-function saveAIModelsDataToFile() {
-    try {
-        fs.writeFileSync(AI_MODELS_FILE, JSON.stringify(serverAIModelsData));
-        console.log(`💾 Saved AI models data to file`);
-    } catch (e) {
-        console.error('Error saving AI models data:', e);
-    }
-}
-
-// Load existing data on startup
-loadDataFromFiles();
+// Create tables
+db.serialize(() => {
+    // Results table
+    db.run(`CREATE TABLE IF NOT EXISTS results (
+        id TEXT PRIMARY KEY,
+        total INTEGER,
+        group_name TEXT,
+        multiplier INTEGER,
+        dice_values TEXT,
+        timestamp DATETIME,
+        winners INTEGER,
+        payout INTEGER
+    )`);
+    
+    // Predictions table
+    db.run(`CREATE TABLE IF NOT EXISTS predictions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        result_id TEXT,
+        ai_stick_group TEXT,
+        ai_extreme_group TEXT,
+        ai_low_mid_group TEXT,
+        ai_mid_high_group TEXT,
+        ensemble_group TEXT,
+        correct_stick INTEGER,
+        correct_extreme INTEGER,
+        correct_low_mid INTEGER,
+        correct_mid_high INTEGER,
+        correct_ensemble INTEGER,
+        timestamp DATETIME,
+        FOREIGN KEY(result_id) REFERENCES results(id)
+    )`);
+    
+    // AI Stats table
+    db.run(`CREATE TABLE IF NOT EXISTS ai_stats (
+        ai_name TEXT PRIMARY KEY,
+        total_predictions INTEGER DEFAULT 0,
+        correct_predictions INTEGER DEFAULT 0,
+        accuracy REAL DEFAULT 0,
+        last_updated DATETIME
+    )`);
+    
+    // Pattern data table for AI persistence
+    db.run(`CREATE TABLE IF NOT EXISTS pattern_data (
+        ai_name TEXT,
+        pattern_key TEXT,
+        streak_value INTEGER,
+        max_streak INTEGER,
+        break_data TEXT,
+        updated_at DATETIME,
+        PRIMARY KEY(ai_name, pattern_key)
+    )`);
+});
 
 // CORS configuration
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json());
+app.use(express.static('public'));
 
-// Serve static files from 'public' folder
-app.use(express.static(path.join(__dirname, 'public')));
+// WebSocket Server for real-time updates
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System`);
+    console.log(`📍 http://localhost:${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}\n`);
+});
 
-// Helper function to get headers for casino.org API
-const getApiHeaders = () => {
-    return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'cross-site'
-    };
-};
+const wss = new WebSocket.Server({ server });
 
-const asyncHandler = (fn) => (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-};
+// Store connected clients
+const clients = new Set();
 
-// ========== SERVER STORAGE API ENDPOINTS ==========
-
-// Save AI Training Data to Server
-app.post('/api/server/save-training', asyncHandler(async (req, res) => {
-    const { data, maxSize } = req.body;
-    if (data && Array.isArray(data)) {
-        serverAITrainingData = data.slice(0, maxSize || 20000);
-        saveAITrainingDataToFile();
-        res.json({ success: true, count: serverAITrainingData.length });
-    } else {
-        res.json({ success: false, error: 'Invalid data' });
-    }
-}));
-
-// Get AI Training Data from Server
-app.get('/api/server/get-training', asyncHandler(async (req, res) => {
-    res.json({ success: true, data: serverAITrainingData, count: serverAITrainingData.length });
-}));
-
-// Save Prediction History to Server
-app.post('/api/server/save-history', asyncHandler(async (req, res) => {
-    const { data, maxSize } = req.body;
-    if (data && Array.isArray(data)) {
-        serverPredictionHistory = data.slice(0, maxSize || 1000);
-        savePredictionHistoryToFile();
-        res.json({ success: true, count: serverPredictionHistory.length });
-    } else {
-        res.json({ success: false, error: 'Invalid data' });
-    }
-}));
-
-// Get Prediction History from Server
-app.get('/api/server/get-history', asyncHandler(async (req, res) => {
-    res.json({ success: true, data: serverPredictionHistory, count: serverPredictionHistory.length });
-}));
-
-// Save AI Models Data
-app.post('/api/server/save-models', asyncHandler(async (req, res) => {
-    const { stick, extremeSwitch, lowMidSwitch, midHighSwitch, ensembleWeights } = req.body;
-    if (stick) serverAIModelsData.stick = stick;
-    if (extremeSwitch) serverAIModelsData.extremeSwitch = extremeSwitch;
-    if (lowMidSwitch) serverAIModelsData.lowMidSwitch = lowMidSwitch;
-    if (midHighSwitch) serverAIModelsData.midHighSwitch = midHighSwitch;
-    if (ensembleWeights) serverAIModelsData.ensembleWeights = ensembleWeights;
-    saveAIModelsDataToFile();
-    res.json({ success: true });
-}));
-
-// Get AI Models Data
-app.get('/api/server/get-models', asyncHandler(async (req, res) => {
-    res.json({ success: true, data: serverAIModelsData });
-}));
-
-// Clear Prediction History (Server side)
-app.delete('/api/server/clear-history', asyncHandler(async (req, res) => {
-    serverPredictionHistory = [];
-    savePredictionHistoryToFile();
-    res.json({ success: true, message: 'History cleared on server' });
-}));
-
-// Get server stats
-app.get('/api/server/stats', asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        trainingCount: serverAITrainingData.length,
-        historyCount: serverPredictionHistory.length,
-        maxTraining: 20000,
-        maxHistory: 1000
+wss.on('connection', (ws) => {
+    clients.add(ws);
+    console.log(`🔌 Client connected. Total clients: ${clients.size}`);
+    
+    ws.on('close', () => {
+        clients.delete(ws);
+        console.log(`🔌 Client disconnected. Total clients: ${clients.size}`);
     });
-}));
+    
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+    });
+});
 
-// ========== ORIGINAL API ENDPOINTS ==========
+// Broadcast to all connected clients
+function broadcast(data) {
+    const message = JSON.stringify(data);
+    clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+}
 
-// Latest result API
-app.get('/api/latest', asyncHandler(async (req, res) => {
+// Background data collection service
+let lastGameId = null;
+let isCollecting = false;
+
+async function collectData() {
+    if (isCollecting) return;
+    isCollecting = true;
+    
     try {
         const response = await axios.get('https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice/latest', {
-            headers: getApiHeaders(),
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json'
+            },
             timeout: 10000
         });
-        res.json(response.data);
+        
+        if (response.data && response.data.data) {
+            const game = response.data.data;
+            const gameId = game.id;
+            
+            if (lastGameId !== gameId) {
+                lastGameId = gameId;
+                await saveGameResult(game);
+                console.log(`✅ New game saved: ${gameId}`);
+            }
+        }
     } catch (error) {
-        console.error('❌ Error fetching latest:', error.message);
-        res.status(500).json({ error: 'Failed to fetch latest results' });
+        console.error('❌ Data collection error:', error);
     }
-}));
+    
+    isCollecting = false;
+}
 
-// Full History API with pagination
-app.get('/api/history', asyncHandler(async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 0;
-        const size = Math.min(parseInt(req.query.size) || 200, 200);
-        const duration = req.query.duration || 24;
-        
-        console.log(`📜 Fetching history page ${page} with size ${size}...`);
-        
-        const response = await axios.get(
-            'https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice',
-            {
-                params: {
-                    page: page,
-                    size: size,
-                    sort: 'data.settledAt,desc',
-                    duration: duration,
-                    totals: '3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18'
-                },
-                headers: getApiHeaders(),
-                timeout: 15000
+async function saveGameResult(game) {
+    const total = game.result.total;
+    const group = getGroup(total);
+    const multipliers = game.result.luckyNumbersList || [];
+    const multiplierItem = multipliers.find(m => m.outcome === `LightningDice_Total${total}`);
+    const diceValues = game.result.value || '⚀ ⚀ ⚀';
+    
+    const result = {
+        id: game.id,
+        total: total,
+        group_name: group,
+        multiplier: multiplierItem ? multiplierItem.multiplier : 1,
+        dice_values: diceValues,
+        timestamp: new Date(game.settledAt).toISOString(),
+        winners: game.totalWinners || 0,
+        payout: game.totalAmount || 0
+    };
+    
+    return new Promise((resolve, reject) => {
+        db.run(`INSERT OR REPLACE INTO results (id, total, group_name, multiplier, dice_values, timestamp, winners, payout)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [result.id, result.total, result.group_name, result.multiplier, result.dice_values, result.timestamp, result.winners, result.payout],
+            (err) => {
+                if (err) reject(err);
+                else {
+                    broadcast({ type: 'new_result', data: result });
+                    resolve();
+                }
             }
         );
-        
-        const totalCount = response.headers['x-total-count'];
-        if (totalCount) {
-            res.set('X-Total-Count', totalCount);
+    });
+}
+
+function getGroup(number) {
+    if (number >= 3 && number <= 9) return 'LOW';
+    if (number >= 10 && number <= 11) return 'MEDIUM';
+    if (number >= 12 && number <= 18) return 'HIGH';
+    return 'UNKNOWN';
+}
+
+// API: Get all results with pagination
+app.get('/api/results', (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    
+    db.all(`SELECT * FROM results ORDER BY timestamp DESC LIMIT ? OFFSET ?`, [limit, offset], (err, results) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
         }
         
-        console.log(`✅ Fetched ${response.data.length} records. Total available: ${totalCount || 'unknown'}`);
-        res.json(response.data);
+        db.get(`SELECT COUNT(*) as total FROM results`, (err, count) => {
+            res.json({
+                data: results,
+                pagination: {
+                    page: page,
+                    limit: limit,
+                    total: count ? count.total : 0,
+                    pages: Math.ceil((count ? count.total : 0) / limit)
+                }
+            });
+        });
+    });
+});
+
+// API: Get predictions history
+app.get('/api/predictions', (req, res) => {
+    const limit = parseInt(req.query.limit) || 100;
+    
+    db.all(`SELECT p.*, r.total, r.group_name as actual_group, r.dice_values, r.timestamp as result_time
+            FROM predictions p
+            JOIN results r ON p.result_id = r.id
+            ORDER BY p.timestamp DESC LIMIT ?`, [limit], (err, predictions) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        res.json(predictions);
+    });
+});
+
+// API: Get stats
+app.get('/api/stats', (req, res) => {
+    db.get(`SELECT 
+                COUNT(*) as total_rounds,
+                AVG(total) as avg_result,
+                (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as most_active_group
+            FROM results`, (err, stats) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
         
-    } catch (error) {
-        console.error('❌ Error fetching history:', error.message);
-        res.status(500).json({ error: 'Failed to fetch history', message: error.message });
-    }
-}));
+        db.get(`SELECT COUNT(*) as lightning_count FROM results WHERE multiplier > 10`, (err, lightning) => {
+            db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
+                const lightningPercent = total && total.total > 0 ? (lightning.lightning_count / total.total) * 100 : 0;
+                res.json({
+                    totalRounds: stats ? stats.total_rounds : 0,
+                    avgResult: stats ? stats.avg_result.toFixed(2) : 0,
+                    mostActiveGroup: stats ? stats.most_active_group : 'LOW',
+                    lightningBoost: Math.round(lightningPercent)
+                });
+            });
+        });
+    });
+});
+
+// API: Get group distribution
+app.get('/api/group-distribution', (req, res) => {
+    db.all(`SELECT group_name, COUNT(*) as count FROM results GROUP BY group_name`, (err, groups) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        const total = groups.reduce((sum, g) => sum + g.count, 0);
+        const distribution = {};
+        groups.forEach(g => {
+            distribution[g.group_name] = {
+                count: g.count,
+                percentage: total > 0 ? (g.count / total) * 100 : 0
+            };
+        });
+        
+        res.json(distribution);
+    });
+});
+
+// API: Save prediction
+app.post('/api/save-prediction', (req, res) => {
+    const { result_id, ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group, correct } = req.body;
+    
+    db.run(`INSERT INTO predictions (result_id, ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group,
+            correct_stick, correct_extreme, correct_low_mid, correct_mid_high, correct_ensemble, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [result_id, ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group,
+         correct.stick, correct.extreme, correct.low_mid, correct.mid_high, correct.ensemble, new Date().toISOString()],
+        (err) => {
+            if (err) {
+                res.status(500).json({ error: err.message });
+                return;
+            }
+            res.json({ success: true });
+        });
+});
+
+// API: Get AI stats
+app.get('/api/ai-stats', (req, res) => {
+    db.all(`SELECT * FROM ai_stats`, (err, stats) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        res.json(stats);
+    });
+});
+
+// API: Update AI stats
+app.post('/api/update-ai-stats', (req, res) => {
+    const { ai_name, correct } = req.body;
+    
+    db.get(`SELECT * FROM ai_stats WHERE ai_name = ?`, [ai_name], (err, stat) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        const total = (stat ? stat.total_predictions : 0) + 1;
+        const correct_total = (stat ? stat.correct_predictions : 0) + (correct ? 1 : 0);
+        const accuracy = (correct_total / total) * 100;
+        
+        db.run(`INSERT OR REPLACE INTO ai_stats (ai_name, total_predictions, correct_predictions, accuracy, last_updated)
+                VALUES (?, ?, ?, ?, ?)`,
+            [ai_name, total, correct_total, accuracy, new Date().toISOString()],
+            (err) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                res.json({ success: true, accuracy: accuracy });
+            });
+    });
+});
+
+// API: Save pattern data
+app.post('/api/save-pattern', (req, res) => {
+    const { ai_name, pattern_key, streak_value, max_streak, break_data } = req.body;
+    
+    db.run(`INSERT OR REPLACE INTO pattern_data (ai_name, pattern_key, streak_value, max_streak, break_data, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+        [ai_name, pattern_key, streak_value, max_streak, JSON.stringify(break_data), new Date().toISOString()],
+        (err) => {
+            if (err) {
+                res.status(500).json({ error: err.message });
+                return;
+            }
+            res.json({ success: true });
+        });
+});
+
+// API: Load pattern data
+app.get('/api/load-pattern/:ai_name', (req, res) => {
+    db.all(`SELECT pattern_key, streak_value, max_streak, break_data FROM pattern_data WHERE ai_name = ?`, 
+        [req.params.ai_name], (err, patterns) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        const result = {};
+        patterns.forEach(p => {
+            result[p.pattern_key] = {
+                streak_value: p.streak_value,
+                max_streak: p.max_streak,
+                break_data: JSON.parse(p.break_data)
+            };
+        });
+        res.json(result);
+    });
+});
+
+// API: Get latest result
+app.get('/api/latest', (req, res) => {
+    db.get(`SELECT * FROM results ORDER BY timestamp DESC LIMIT 1`, (err, result) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        res.json(result || {});
+    });
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
+        clients: clients.size,
         uptime: process.uptime(),
         nodeVersion: process.version,
-        environment: process.env.NODE_ENV || 'production',
-        serverStorage: {
-            trainingRecords: serverAITrainingData.length,
-            historyRecords: serverPredictionHistory.length
-        }
+        environment: process.env.NODE_ENV || 'production'
     });
 });
 
-// Test endpoint
-app.get('/api/test', asyncHandler(async (req, res) => {
-    try {
-        const response = await axios.get('https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice/latest', {
-            headers: getApiHeaders(),
-            timeout: 10000
-        });
-        res.json({ success: true, message: 'API is accessible', data: response.data });
-    } catch (error) {
-        res.json({ success: false, message: error.message });
-    }
-}));
+// Start background data collection
+setInterval(collectData, 3000);
+collectData();
 
-// Keep-alive function
-const KEEP_ALIVE_INTERVAL = 5 * 60 * 1000;
-
-setInterval(async () => {
-    try {
-        const protocol = process.env.RAILWAY ? 'https' : 'http';
-        const host = process.env.RAILWAY_PUBLIC_DOMAIN || `localhost:${PORT}`;
-        const url = `${protocol}://${host}/api/health`;
-        
-        if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-            const response = await axios.get(url, { timeout: 5000 });
-            console.log(`🔄 Keep-alive ping sent at ${new Date().toISOString()} - Status: ${response.status}`);
-        }
-    } catch (error) {
-        console.log(`⚠️ Keep-alive ping failed: ${error.message}`);
-    }
-}, KEEP_ALIVE_INTERVAL);
-
-console.log('⏰ Keep-alive service started - pinging every 5 minutes');
-
-// Error handler
-app.use((err, req, res, next) => {
-    console.error('❌ Server Error:', err.message);
-    res.status(500).json({ 
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-    });
-});
-
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System (SERVER STORAGE MODE)`);
-    console.log(`📍 http://localhost:${PORT}`);
-    console.log(`💾 Server Storage: ${serverAITrainingData.length} training records, ${serverPredictionHistory.length} history records`);
-    console.log(`📁 Public folder: ${path.join(__dirname, 'public')}`);
-    console.log(`📁 Data folder: ${DATA_DIR}`);
-    console.log(`🔄 Latest API: http://localhost:${PORT}/api/latest`);
-    console.log(`📜 History API: http://localhost:${PORT}/api/history`);
-    console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
-    console.log(`🚀 Server running on port ${PORT}\n`);
-});
+console.log('📊 Background data collection started (every 3 seconds)');
+console.log(`🔌 WebSocket server ready for real-time updates`);
