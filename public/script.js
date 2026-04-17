@@ -1,3 +1,5 @@
+// script.js (Updated Full File)
+
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller with Persistent Storage & WebSocket
@@ -39,6 +41,9 @@ class LightningDiceApp {
         await this.loadAIStats();
         await this.loadPatternsFromServer();
         
+        // Load current prediction from server (for offline mode)
+        await this.loadCurrentPrediction();
+        
         if (this.allResults.length >= 5) {
             await this.trainAllModels();
         }
@@ -53,31 +58,85 @@ class LightningDiceApp {
     setupWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
+        let reconnectDelay = 1000;
+        const maxDelay = 30000;
         
-        this.ws = new WebSocket(wsUrl);
-        
-        this.ws.onopen = () => {
-            console.log('🔌 WebSocket connected');
-            this.updateConnectionStatus(true);
+        const connect = () => {
+            this.ws = new WebSocket(wsUrl);
+            
+            this.ws.onopen = () => {
+                console.log('🔌 WebSocket connected');
+                reconnectDelay = 1000;
+                this.updateConnectionStatus(true);
+                // Refresh current prediction when reconnected
+                this.loadCurrentPrediction();
+            };
+            
+            this.ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'new_result') {
+                    console.log('🆕 New result via WebSocket:', data.data);
+                    this.handleNewResult(data.data);
+                }
+            };
+            
+            this.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.updateConnectionStatus(false);
+            };
+            
+            this.ws.onclose = () => {
+                console.log(`WebSocket disconnected, reconnecting in ${reconnectDelay}ms...`);
+                this.updateConnectionStatus(false);
+                setTimeout(connect, reconnectDelay);
+                reconnectDelay = Math.min(reconnectDelay * 1.5, maxDelay);
+            };
         };
         
-        this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'new_result') {
-                console.log('🆕 New result via WebSocket:', data.data);
-                this.handleNewResult(data.data);
+        connect();
+    }
+    
+    async loadCurrentPrediction() {
+        try {
+            const response = await fetch(`${this.apiBase}/current-prediction`);
+            if (!response.ok) throw new Error('Failed to load current prediction');
+            const data = await response.json();
+            
+            if (data.success && data.prediction) {
+                this.displayServerPrediction(data.prediction);
             }
-        };
+        } catch (error) {
+            console.error('Error loading current prediction:', error);
+        }
+    }
+    
+    displayServerPrediction(prediction) {
+        // Display server-side prediction in UI
+        const ensembleGroup = prediction.ensemble;
+        const stickGroup = prediction.stick;
+        const extremeGroup = prediction.extreme;
+        const lowMidGroup = prediction.lowMid;
+        const midHighGroup = prediction.midHigh;
         
-        this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            this.updateConnectionStatus(false);
-        };
+        // Update AI rows with server prediction data
+        document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(stickGroup)} ${stickGroup}`;
+        document.getElementById('aiExtremePred').innerHTML = `${this.getGroupIcon(extremeGroup)} ${extremeGroup}`;
+        document.getElementById('aiLowMidPred').innerHTML = `${this.getGroupIcon(lowMidGroup)} ${lowMidGroup}`;
+        document.getElementById('aiMidHighPred').innerHTML = `${this.getGroupIcon(midHighGroup)} ${midHighGroup}`;
         
-        this.ws.onclose = () => {
-            console.log('WebSocket disconnected, reconnecting in 5s...');
-            setTimeout(() => this.setupWebSocket(), 5000);
-        };
+        // Update ensemble display
+        document.getElementById('finalIcon').textContent = this.getGroupIcon(ensembleGroup);
+        document.getElementById('finalName').textContent = ensembleGroup;
+        document.getElementById('finalRange').textContent = `(${this.getGroupRange(ensembleGroup)})`;
+        
+        // Get vote count from prediction if available
+        if (prediction.predictions && prediction.predictions.ensembleResult) {
+            const agreement = prediction.predictions.ensembleResult.final.agreement;
+            document.getElementById('voteCount').textContent = `(${agreement}/4 AI agree)`;
+            const confidence = prediction.predictions.ensembleResult.final.confidence;
+            document.getElementById('confidenceFill').style.width = `${confidence}%`;
+            document.getElementById('finalConfidence').textContent = `${confidence}%`;
+        }
     }
     
     setupCollapsibleStats() {
@@ -326,6 +385,7 @@ class LightningDiceApp {
             ensemble: ensembleGroup === result.group_name
         };
         
+        // Save prediction to server (server will handle AI training)
         await this.savePredictionToServer(result.id, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup, correct);
         
         const newResult = {
@@ -342,6 +402,7 @@ class LightningDiceApp {
         this.allResults.unshift(newResult);
         this.lastGameId = result.id;
         
+        // Update client-side AI models
         if (window.AI_Stick) window.AI_Stick.updateWithResult({ group: result.group_name }, previousGroup);
         if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.updateWithResult({ group: result.group_name }, previousGroup);
         if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.updateWithResult({ group: result.group_name }, previousGroup);
@@ -353,13 +414,15 @@ class LightningDiceApp {
         if (window.AI_MidHighSwitch) window.AI_MidHighSwitch.recordPredictionResult(correct.mid_high);
         if (window.EnsembleVoterV4) window.EnsembleVoterV4.recordPredictionResult(correct.ensemble);
         
-        await this.updateAIStats();
-        
         this.updateUI();
         this.updateRecentResultsDisplay();
         this.updateStatisticsTable();
         this.updateGroupProbabilities();
         this.animateNewResult();
+        
+        // Refresh current prediction from server
+        await this.loadCurrentPrediction();
+        await this.loadPredictions(); // Reload history
     }
     
     async savePredictionToServer(resultId, stick, extreme, lowMid, midHigh, ensemble, correct) {
@@ -379,29 +442,6 @@ class LightningDiceApp {
             });
         } catch (error) {
             console.error('Error saving prediction:', error);
-        }
-    }
-    
-    async updateAIStats() {
-        const aiModels = [
-            { name: 'AI_Stick', ai: window.AI_Stick },
-            { name: 'AI_ExtremeSwitch', ai: window.AI_ExtremeSwitch },
-            { name: 'AI_LowMidSwitch', ai: window.AI_LowMidSwitch },
-            { name: 'AI_MidHighSwitch', ai: window.AI_MidHighSwitch }
-        ];
-        
-        for (const model of aiModels) {
-            if (model.ai) {
-                try {
-                    await fetch(`${this.apiBase}/update-ai-stats`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ai_name: model.name, correct: true })
-                    });
-                } catch (error) {
-                    console.error(`Error updating stats for ${model.name}:`, error);
-                }
-            }
         }
     }
     
@@ -674,6 +714,7 @@ class LightningDiceApp {
         await this.loadResults();
         await this.loadPredictions();
         await this.loadAIStats();
+        await this.loadCurrentPrediction();
         this.updateUI();
     }
     
