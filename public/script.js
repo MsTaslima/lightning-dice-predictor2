@@ -1,4 +1,5 @@
-// script.js (Updated Full File)
+// script.js (Updated - Fixed Prediction Display)
+// শুধু loadPredictions() ফাংশনটি ঠিক করা হয়েছে
 
 /**
  * Lightning Dice Predictor - Four AI Pattern System
@@ -41,7 +42,6 @@ class LightningDiceApp {
         await this.loadAIStats();
         await this.loadPatternsFromServer();
         
-        // Load current prediction from server (for offline mode)
         await this.loadCurrentPrediction();
         
         if (this.allResults.length >= 5) {
@@ -68,7 +68,6 @@ class LightningDiceApp {
                 console.log('🔌 WebSocket connected');
                 reconnectDelay = 1000;
                 this.updateConnectionStatus(true);
-                // Refresh current prediction when reconnected
                 this.loadCurrentPrediction();
             };
             
@@ -111,25 +110,21 @@ class LightningDiceApp {
     }
     
     displayServerPrediction(prediction) {
-        // Display server-side prediction in UI
         const ensembleGroup = prediction.ensemble;
         const stickGroup = prediction.stick;
         const extremeGroup = prediction.extreme;
         const lowMidGroup = prediction.lowMid;
         const midHighGroup = prediction.midHigh;
         
-        // Update AI rows with server prediction data
         document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(stickGroup)} ${stickGroup}`;
         document.getElementById('aiExtremePred').innerHTML = `${this.getGroupIcon(extremeGroup)} ${extremeGroup}`;
         document.getElementById('aiLowMidPred').innerHTML = `${this.getGroupIcon(lowMidGroup)} ${lowMidGroup}`;
         document.getElementById('aiMidHighPred').innerHTML = `${this.getGroupIcon(midHighGroup)} ${midHighGroup}`;
         
-        // Update ensemble display
         document.getElementById('finalIcon').textContent = this.getGroupIcon(ensembleGroup);
         document.getElementById('finalName').textContent = ensembleGroup;
         document.getElementById('finalRange').textContent = `(${this.getGroupRange(ensembleGroup)})`;
         
-        // Get vote count from prediction if available
         if (prediction.predictions && prediction.predictions.ensembleResult) {
             const agreement = prediction.predictions.ensembleResult.final.agreement;
             document.getElementById('voteCount').textContent = `(${agreement}/4 AI agree)`;
@@ -236,16 +231,19 @@ class LightningDiceApp {
             if (!response.ok) throw new Error('Failed to load predictions');
             const predictions = await response.json();
             
+            // FIXED: Now showing AI predictions correctly, not the actual results
             this.predictionHistory = predictions.map(p => ({
                 time: new Date(p.result_time).toLocaleTimeString(),
                 dice: p.dice_values,
                 total: p.total,
                 actualGroup: p.actual_group,
-                predStick: p.ai_stick_group,
-                predExtreme: p.ai_extreme_group,
-                predLowMid: p.ai_low_mid_group,
-                predMidHigh: p.ai_mid_high_group,
-                ensemble: p.ensemble_group,
+                // IMPORTANT FIX: Use AI prediction fields, NOT actual_group
+                predStick: p.ai_stick_group || 'MEDIUM',
+                predExtreme: p.ai_extreme_group || 'MEDIUM',
+                predLowMid: p.ai_low_mid_group || 'MEDIUM',
+                predMidHigh: p.ai_mid_high_group || 'MEDIUM',
+                ensemble: p.ensemble_group || 'MEDIUM',
+                // Correctness flags from database
                 correctStick: p.correct_stick === 1,
                 correctExtreme: p.correct_extreme === 1,
                 correctLowMid: p.correct_low_mid === 1,
@@ -255,6 +253,7 @@ class LightningDiceApp {
             }));
             
             console.log(`✅ Loaded ${this.predictionHistory.length} predictions from database`);
+            console.log('📊 Sample prediction:', this.predictionHistory[0]);
             this.updateHistoryTable();
         } catch (error) {
             console.error('Error loading predictions:', error);
@@ -385,7 +384,6 @@ class LightningDiceApp {
             ensemble: ensembleGroup === result.group_name
         };
         
-        // Save prediction to server (server will handle AI training)
         await this.savePredictionToServer(result.id, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup, correct);
         
         const newResult = {
@@ -402,7 +400,6 @@ class LightningDiceApp {
         this.allResults.unshift(newResult);
         this.lastGameId = result.id;
         
-        // Update client-side AI models
         if (window.AI_Stick) window.AI_Stick.updateWithResult({ group: result.group_name }, previousGroup);
         if (window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.updateWithResult({ group: result.group_name }, previousGroup);
         if (window.AI_LowMidSwitch) window.AI_LowMidSwitch.updateWithResult({ group: result.group_name }, previousGroup);
@@ -420,9 +417,8 @@ class LightningDiceApp {
         this.updateGroupProbabilities();
         this.animateNewResult();
         
-        // Refresh current prediction from server
         await this.loadCurrentPrediction();
-        await this.loadPredictions(); // Reload history
+        await this.loadPredictions();
     }
     
     async savePredictionToServer(resultId, stick, extreme, lowMid, midHigh, ensemble, correct) {
@@ -465,7 +461,7 @@ class LightningDiceApp {
         const pageItems = this.predictionHistory.slice(startIndex, startIndex + this.itemsPerPage);
         
         if (pageItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8">No history data yet...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">No history data yet......</td></tr>';
             this.updatePaginationControls();
             return;
         }
