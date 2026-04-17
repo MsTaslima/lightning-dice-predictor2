@@ -1,8 +1,9 @@
-// script.js (Fully Updated - Fixed Prediction Display + No Duplicate Save)
+// script.js (Fully Fixed - Stable Prediction Display)
 
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller with Persistent Storage & WebSocket
+ * FIXED: Table shows AI predictions correctly, no auto-refresh overwrite
  */
 
 class LightningDiceApp {
@@ -16,6 +17,8 @@ class LightningDiceApp {
         this.refreshSeconds = 3;
         this.isInitialized = false;
         
+        // Store predictions in a Map for stable reference
+        this.predictionsMap = new Map(); // key: result_id, value: prediction object
         this.predictionHistory = [];
         this.currentPage = 1;
         this.itemsPerPage = 10;
@@ -40,7 +43,7 @@ class LightningDiceApp {
         
         await this.loadStats();
         await this.loadResults();
-        await this.loadPredictions();
+        await this.loadPredictionsFromServer();
         await this.loadAIStats();
         await this.loadPatternsFromServer();
         
@@ -121,21 +124,34 @@ class LightningDiceApp {
         const lowMidGroup = prediction.lowMid;
         const midHighGroup = prediction.midHigh;
         
-        document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(stickGroup)} ${stickGroup}`;
-        document.getElementById('aiExtremePred').innerHTML = `${this.getGroupIcon(extremeGroup)} ${extremeGroup}`;
-        document.getElementById('aiLowMidPred').innerHTML = `${this.getGroupIcon(lowMidGroup)} ${lowMidGroup}`;
-        document.getElementById('aiMidHighPred').innerHTML = `${this.getGroupIcon(midHighGroup)} ${midHighGroup}`;
+        const stickPredEl = document.getElementById('aiStickPred');
+        const extremePredEl = document.getElementById('aiExtremePred');
+        const lowMidPredEl = document.getElementById('aiLowMidPred');
+        const midHighPredEl = document.getElementById('aiMidHighPred');
         
-        document.getElementById('finalIcon').textContent = this.getGroupIcon(ensembleGroup);
-        document.getElementById('finalName').textContent = ensembleGroup;
-        document.getElementById('finalRange').textContent = `(${this.getGroupRange(ensembleGroup)})`;
+        if (stickPredEl) stickPredEl.innerHTML = `${this.getGroupIcon(stickGroup)} ${stickGroup}`;
+        if (extremePredEl) extremePredEl.innerHTML = `${this.getGroupIcon(extremeGroup)} ${extremeGroup}`;
+        if (lowMidPredEl) lowMidPredEl.innerHTML = `${this.getGroupIcon(lowMidGroup)} ${lowMidGroup}`;
+        if (midHighPredEl) midHighPredEl.innerHTML = `${this.getGroupIcon(midHighGroup)} ${midHighGroup}`;
+        
+        const finalIcon = document.getElementById('finalIcon');
+        const finalName = document.getElementById('finalName');
+        const finalRange = document.getElementById('finalRange');
+        
+        if (finalIcon) finalIcon.textContent = this.getGroupIcon(ensembleGroup);
+        if (finalName) finalName.textContent = ensembleGroup;
+        if (finalRange) finalRange.textContent = `(${this.getGroupRange(ensembleGroup)})`;
         
         if (prediction.predictions && prediction.predictions.ensembleResult) {
             const agreement = prediction.predictions.ensembleResult.final.agreement;
-            document.getElementById('voteCount').textContent = `(${agreement}/4 AI agree)`;
+            const voteCountEl = document.getElementById('voteCount');
+            const confidenceFill = document.getElementById('confidenceFill');
+            const finalConfidence = document.getElementById('finalConfidence');
+            
+            if (voteCountEl) voteCountEl.textContent = `(${agreement}/4 AI agree)`;
             const confidence = prediction.predictions.ensembleResult.final.confidence;
-            document.getElementById('confidenceFill').style.width = `${confidence}%`;
-            document.getElementById('finalConfidence').textContent = `${confidence}%`;
+            if (confidenceFill) confidenceFill.style.width = `${confidence}%`;
+            if (finalConfidence) finalConfidence.textContent = `${confidence}%`;
         }
     }
     
@@ -181,7 +197,7 @@ class LightningDiceApp {
         const totalPages = Math.ceil(this.predictionHistory.length / this.itemsPerPage);
         if (newPage >= 1 && newPage <= totalPages) {
             this.currentPage = newPage;
-            this.updateHistoryTable();
+            this.renderHistoryTable();
         }
     }
     
@@ -191,10 +207,15 @@ class LightningDiceApp {
             if (!response.ok) throw new Error('Failed to load stats');
             const stats = await response.json();
             
-            document.getElementById('totalRounds').textContent = stats.totalRounds.toLocaleString();
-            document.getElementById('avgResult').textContent = stats.avgResult;
-            document.getElementById('mostActiveGroup').textContent = stats.mostActiveGroup;
-            document.getElementById('lightningBoost').textContent = `${stats.lightningBoost}%`;
+            const totalRoundsEl = document.getElementById('totalRounds');
+            const avgResultEl = document.getElementById('avgResult');
+            const mostActiveGroupEl = document.getElementById('mostActiveGroup');
+            const lightningBoostEl = document.getElementById('lightningBoost');
+            
+            if (totalRoundsEl) totalRoundsEl.textContent = stats.totalRounds.toLocaleString();
+            if (avgResultEl) avgResultEl.textContent = stats.avgResult;
+            if (mostActiveGroupEl) mostActiveGroupEl.textContent = stats.mostActiveGroup;
+            if (lightningBoostEl) lightningBoostEl.textContent = `${stats.lightningBoost}%`;
         } catch (error) {
             console.error('Error loading stats:', error);
         }
@@ -230,38 +251,52 @@ class LightningDiceApp {
         }
     }
     
-    async loadPredictions() {
+    async loadPredictionsFromServer() {
         try {
-            const response = await fetch(`${this.apiBase}/predictions?limit=200`);
+            const response = await fetch(`${this.apiBase}/predictions?limit=500`);
             if (!response.ok) throw new Error('Failed to load predictions');
             const predictions = await response.json();
             
-            // FIXED: Now showing AI predictions correctly, not the actual results
-            this.predictionHistory = predictions.map(p => ({
-                time: new Date(p.result_time).toLocaleTimeString(),
-                dice: p.dice_values,
-                total: p.total,
-                actualGroup: p.actual_group,
-                // AI prediction fields from database
-                predStick: p.ai_stick_group || 'MEDIUM',
-                predExtreme: p.ai_extreme_group || 'MEDIUM',
-                predLowMid: p.ai_low_mid_group || 'MEDIUM',
-                predMidHigh: p.ai_mid_high_group || 'MEDIUM',
-                ensemble: p.ensemble_group || 'MEDIUM',
-                // Correctness flags from database
-                correctStick: p.correct_stick === 1,
-                correctExtreme: p.correct_extreme === 1,
-                correctLowMid: p.correct_low_mid === 1,
-                correctMidHigh: p.correct_mid_high === 1,
-                correctEnsemble: p.correct_ensemble === 1,
-                timestamp: new Date(p.result_time)
-            }));
+            // Clear existing map and history
+            this.predictionsMap.clear();
+            this.predictionHistory = [];
             
-            console.log(`✅ Loaded ${this.predictionHistory.length} predictions from database`);
-            if (this.predictionHistory.length > 0) {
-                console.log('📊 Sample prediction:', this.predictionHistory[0]);
+            // Store predictions in Map for stable reference
+            for (const p of predictions) {
+                const predictionEntry = {
+                    id: p.result_id,
+                    time: new Date(p.result_time).toLocaleTimeString(),
+                    dice: p.dice_values,
+                    total: p.total,
+                    actualGroup: p.actual_group,
+                    predStick: p.ai_stick_group || 'MEDIUM',
+                    predExtreme: p.ai_extreme_group || 'MEDIUM',
+                    predLowMid: p.ai_low_mid_group || 'MEDIUM',
+                    predMidHigh: p.ai_mid_high_group || 'MEDIUM',
+                    ensemble: p.ensemble_group || 'MEDIUM',
+                    correctStick: p.correct_stick === 1,
+                    correctExtreme: p.correct_extreme === 1,
+                    correctLowMid: p.correct_low_mid === 1,
+                    correctMidHigh: p.correct_mid_high === 1,
+                    correctEnsemble: p.correct_ensemble === 1,
+                    timestamp: new Date(p.result_time)
+                };
+                this.predictionsMap.set(p.result_id, predictionEntry);
             }
-            this.updateHistoryTable();
+            
+            // Convert Map to array and sort by timestamp (newest first)
+            this.predictionHistory = Array.from(this.predictionsMap.values())
+                .sort((a, b) => b.timestamp - a.timestamp);
+            
+            console.log(`✅ Loaded ${this.predictionHistory.length} predictions from server`);
+            if (this.predictionHistory.length > 0) {
+                console.log('📊 Sample prediction (should show AI prediction, not actual):', {
+                    predStick: this.predictionHistory[0].predStick,
+                    actualGroup: this.predictionHistory[0].actualGroup,
+                    correct: this.predictionHistory[0].correctStick
+                });
+            }
+            this.renderHistoryTable();
         } catch (error) {
             console.error('Error loading predictions:', error);
         }
@@ -479,8 +514,9 @@ class LightningDiceApp {
             window.EnsembleVoterV4.updateWeights(accStick, accExtreme, accLowMid, accMidHigh);
         }
         
-        // Add to local history (for UI display immediately)
-        const newPredictionEntry = {
+        // Create prediction entry
+        const predictionEntry = {
+            id: result.id,
             time: new Date(result.timestamp).toLocaleTimeString(),
             dice: result.dice_values,
             total: result.total,
@@ -498,9 +534,18 @@ class LightningDiceApp {
             timestamp: new Date(result.timestamp)
         };
         
-        this.predictionHistory.unshift(newPredictionEntry);
-        if (this.predictionHistory.length > this.maxHistorySize) {
-            this.predictionHistory.pop();
+        // Store in Map (prevents duplicate)
+        if (!this.predictionsMap.has(result.id)) {
+            this.predictionsMap.set(result.id, predictionEntry);
+            // Add to history array and keep sorted
+            this.predictionHistory = Array.from(this.predictionsMap.values())
+                .sort((a, b) => b.timestamp - a.timestamp);
+            
+            // Limit size
+            if (this.predictionHistory.length > this.maxHistorySize) {
+                const removed = this.predictionHistory.pop();
+                if (removed) this.predictionsMap.delete(removed.id);
+            }
         }
         
         // Add to results
@@ -523,16 +568,14 @@ class LightningDiceApp {
         this.updateRecentResultsDisplay();
         this.updateStatisticsTable();
         this.updateGroupProbabilities();
-        this.updateHistoryTable();
+        this.renderHistoryTable();
         this.animateNewResult();
         
-        // Save to offline storage if needed (backup)
+        // Save to offline storage as backup
         this.savePredictionOffline(result.id, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup, correct);
-        
-        await this.loadCurrentPrediction();
     }
     
-    // Offline storage backup (in case server save fails)
+    // Offline storage backup
     savePredictionOffline(resultId, stick, extreme, lowMid, midHigh, ensemble, correct) {
         const offlineData = {
             result_id: resultId,
@@ -547,7 +590,6 @@ class LightningDiceApp {
         
         try {
             let existing = JSON.parse(localStorage.getItem('offline_predictions') || '[]');
-            // Check if already exists
             if (!existing.some(p => p.result_id === resultId)) {
                 existing.push(offlineData);
                 localStorage.setItem('offline_predictions', JSON.stringify(existing));
@@ -587,7 +629,7 @@ class LightningDiceApp {
         }
     }
     
-    updateHistoryTable() {
+    renderHistoryTable() {
         const tbody = document.getElementById('historyTableBody');
         if (!tbody) return;
         
@@ -613,8 +655,8 @@ class LightningDiceApp {
             
             return `
                 <tr>
-                    <td>${item.time}</td>
-                    <td class="dice-values">🎲 ${item.dice}</td>
+                    <td style="font-size: 11px;">${item.time}</td>
+                    <td class="dice-values" style="font-size: 11px;">🎲 ${item.dice}</td>
                     <td><strong>${item.total}</strong> <small>(${item.actualGroup})</small></td>
                     <td><span class="prediction-badge ${getBadgeClass(item.correctStick)}">${getIcon(item.predStick)} ${item.predStick} ${getCheckmark(item.correctStick)}</span></td>
                     <td><span class="prediction-badge ${getBadgeClass(item.correctExtreme)}">${getIcon(item.predExtreme)} ${item.predExtreme} ${getCheckmark(item.correctExtreme)}</span></td>
@@ -657,50 +699,79 @@ class LightningDiceApp {
         
         const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
         
-        if (predStick) {
-            document.getElementById('aiStickInput').textContent = `${previousGroup} → ${currentGroup}`;
+        const aiStickInput = document.getElementById('aiStickInput');
+        const aiStickPred = document.getElementById('aiStickPred');
+        const aiStickConf = document.getElementById('aiStickConf');
+        const aiStickAcc = document.getElementById('aiStickAcc');
+        
+        if (predStick && aiStickInput) {
+            aiStickInput.textContent = `${previousGroup} → ${currentGroup}`;
             const stickText = predStick.prediction === "STICK" ? `${predStick.nextGroup} (Stick)` : `Switch to ${predStick.nextGroup}`;
-            document.getElementById('aiStickPred').innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${stickText}`;
-            document.getElementById('aiStickConf').textContent = `${predStick.confidence}%`;
-            document.getElementById('aiStickAcc').textContent = `${(predStick.accuracy || 0).toFixed(1)}%`;
+            if (aiStickPred) aiStickPred.innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${stickText}`;
+            if (aiStickConf) aiStickConf.textContent = `${predStick.confidence}%`;
+            if (aiStickAcc) aiStickAcc.textContent = `${(predStick.accuracy || 0).toFixed(1)}%`;
         }
         
-        if (predExtreme) {
-            document.getElementById('aiExtremeInput').textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
+        const aiExtremeInput = document.getElementById('aiExtremeInput');
+        const aiExtremePred = document.getElementById('aiExtremePred');
+        const aiExtremeConf = document.getElementById('aiExtremeConf');
+        const aiExtremeAcc = document.getElementById('aiExtremeAcc');
+        
+        if (predExtreme && aiExtremeInput) {
+            aiExtremeInput.textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
             let extremeText = predExtreme.prediction === "CONTINUE" ? `Continue ${predExtreme.pattern?.split("→")[1]?.trim() || 'MEDIUM'}` : `Break to ${predExtreme.nextGroup}`;
-            document.getElementById('aiExtremePred').innerHTML = `${this.getGroupIcon(predExtreme.nextGroup)} ${extremeText}`;
-            document.getElementById('aiExtremeConf').textContent = `${predExtreme.confidence}%`;
-            document.getElementById('aiExtremeAcc').textContent = `${(predExtreme.accuracy || 0).toFixed(1)}%`;
+            if (aiExtremePred) aiExtremePred.innerHTML = `${this.getGroupIcon(predExtreme.nextGroup)} ${extremeText}`;
+            if (aiExtremeConf) aiExtremeConf.textContent = `${predExtreme.confidence}%`;
+            if (aiExtremeAcc) aiExtremeAcc.textContent = `${(predExtreme.accuracy || 0).toFixed(1)}%`;
         }
         
-        if (predLowMid) {
-            document.getElementById('aiLowMidInput').textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
+        const aiLowMidInput = document.getElementById('aiLowMidInput');
+        const aiLowMidPred = document.getElementById('aiLowMidPred');
+        const aiLowMidConf = document.getElementById('aiLowMidConf');
+        const aiLowMidAcc = document.getElementById('aiLowMidAcc');
+        
+        if (predLowMid && aiLowMidInput) {
+            aiLowMidInput.textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
             let lowMidText = predLowMid.prediction === "CONTINUE" ? `Continue ${predLowMid.pattern?.split("→")[1]?.trim() || 'MEDIUM'}` : `Break to ${predLowMid.nextGroup}`;
-            document.getElementById('aiLowMidPred').innerHTML = `${this.getGroupIcon(predLowMid.nextGroup)} ${lowMidText}`;
-            document.getElementById('aiLowMidConf').textContent = `${predLowMid.confidence}%`;
-            document.getElementById('aiLowMidAcc').textContent = `${(predLowMid.accuracy || 0).toFixed(1)}%`;
+            if (aiLowMidPred) aiLowMidPred.innerHTML = `${this.getGroupIcon(predLowMid.nextGroup)} ${lowMidText}`;
+            if (aiLowMidConf) aiLowMidConf.textContent = `${predLowMid.confidence}%`;
+            if (aiLowMidAcc) aiLowMidAcc.textContent = `${(predLowMid.accuracy || 0).toFixed(1)}%`;
         }
         
-        if (predMidHigh) {
-            document.getElementById('aiMidHighInput').textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
+        const aiMidHighInput = document.getElementById('aiMidHighInput');
+        const aiMidHighPred = document.getElementById('aiMidHighPred');
+        const aiMidHighConf = document.getElementById('aiMidHighConf');
+        const aiMidHighAcc = document.getElementById('aiMidHighAcc');
+        
+        if (predMidHigh && aiMidHighInput) {
+            aiMidHighInput.textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
             let midHighText = predMidHigh.prediction === "CONTINUE" ? `Continue ${predMidHigh.pattern?.split("→")[1]?.trim() || 'HIGH'}` : `Break to ${predMidHigh.nextGroup}`;
-            document.getElementById('aiMidHighPred').innerHTML = `${this.getGroupIcon(predMidHigh.nextGroup)} ${midHighText}`;
-            document.getElementById('aiMidHighConf').textContent = `${predMidHigh.confidence}%`;
-            document.getElementById('aiMidHighAcc').textContent = `${(predMidHigh.accuracy || 0).toFixed(1)}%`;
+            if (aiMidHighPred) aiMidHighPred.innerHTML = `${this.getGroupIcon(predMidHigh.nextGroup)} ${midHighText}`;
+            if (aiMidHighConf) aiMidHighConf.textContent = `${predMidHigh.confidence}%`;
+            if (aiMidHighAcc) aiMidHighAcc.textContent = `${(predMidHigh.accuracy || 0).toFixed(1)}%`;
         }
+        
+        const voteCount = document.getElementById('voteCount');
+        const finalIcon = document.getElementById('finalIcon');
+        const finalName = document.getElementById('finalName');
+        const finalRange = document.getElementById('finalRange');
+        const confidenceFill = document.getElementById('confidenceFill');
+        const finalConfidence = document.getElementById('finalConfidence');
+        const finalExplanation = document.getElementById('finalExplanation');
+        const finalWeights = document.getElementById('finalWeights');
         
         if (ensemble) {
-            document.getElementById('voteCount').textContent = `(${ensemble.final.agreement}/4 AI agree)`;
-            document.getElementById('finalIcon').textContent = this.getGroupIcon(ensemble.final.group);
-            document.getElementById('finalName').textContent = ensemble.final.group;
-            document.getElementById('finalRange').textContent = `(${this.getGroupRange(ensemble.final.group)})`;
-            document.getElementById('confidenceFill').style.width = `${ensemble.final.confidence}%`;
-            document.getElementById('finalConfidence').textContent = `${ensemble.final.confidence}%`;
-            document.getElementById('finalExplanation').textContent = ensemble.explanation || `Ensemble predicts ${ensemble.final.group} with ${ensemble.final.confidence}% confidence`;
+            if (voteCount) voteCount.textContent = `(${ensemble.final.agreement}/4 AI agree)`;
+            if (finalIcon) finalIcon.textContent = this.getGroupIcon(ensemble.final.group);
+            if (finalName) finalName.textContent = ensemble.final.group;
+            if (finalRange) finalRange.textContent = `(${this.getGroupRange(ensemble.final.group)})`;
+            if (confidenceFill) confidenceFill.style.width = `${ensemble.final.confidence}%`;
+            if (finalConfidence) finalConfidence.textContent = `${ensemble.final.confidence}%`;
+            if (finalExplanation) finalExplanation.textContent = ensemble.explanation || `Ensemble predicts ${ensemble.final.group} with ${ensemble.final.confidence}% confidence`;
             
             const weights = ensemble.weights;
-            if (weights) {
-                document.getElementById('finalWeights').innerHTML = `Weights: Stick ${(weights.stick*100).toFixed(0)}% | Extreme ${(weights.extremeSwitch*100).toFixed(0)}% | Low-Mid ${(weights.lowMidSwitch*100).toFixed(0)}% | Mid-High ${(weights.midHighSwitch*100).toFixed(0)}%`;
+            if (weights && finalWeights) {
+                finalWeights.innerHTML = `Weights: Stick ${(weights.stick*100).toFixed(0)}% | Extreme ${(weights.extremeSwitch*100).toFixed(0)}% | Low-Mid ${(weights.lowMidSwitch*100).toFixed(0)}% | Mid-High ${(weights.midHighSwitch*100).toFixed(0)}%`;
             }
         }
     }
@@ -784,13 +855,19 @@ class LightningDiceApp {
         recentResults.forEach(r => { if (r && r.group) recentCount[r.group]++; });
         
         const total = recentResults.length || 1;
-        document.getElementById('lowProb').textContent = `${Math.round((recentCount.LOW / total) * 100)}%`;
-        document.getElementById('mediumProb').textContent = `${Math.round((recentCount.MEDIUM / total) * 100)}%`;
-        document.getElementById('highProb').textContent = `${Math.round((recentCount.HIGH / total) * 100)}%`;
+        const lowProb = document.getElementById('lowProb');
+        const mediumProb = document.getElementById('mediumProb');
+        const highProb = document.getElementById('highProb');
+        const lowTrend = document.getElementById('lowTrend');
+        const mediumTrend = document.getElementById('mediumTrend');
+        const highTrend = document.getElementById('highTrend');
         
-        document.getElementById('lowTrend').textContent = this.getTrendText(recentCount.LOW, total);
-        document.getElementById('mediumTrend').textContent = this.getTrendText(recentCount.MEDIUM, total);
-        document.getElementById('highTrend').textContent = this.getTrendText(recentCount.HIGH, total);
+        if (lowProb) lowProb.textContent = `${Math.round((recentCount.LOW / total) * 100)}%`;
+        if (mediumProb) mediumProb.textContent = `${Math.round((recentCount.MEDIUM / total) * 100)}%`;
+        if (highProb) highProb.textContent = `${Math.round((recentCount.HIGH / total) * 100)}%`;
+        if (lowTrend) lowTrend.textContent = this.getTrendText(recentCount.LOW, total);
+        if (mediumTrend) mediumTrend.textContent = this.getTrendText(recentCount.MEDIUM, total);
+        if (highTrend) highTrend.textContent = this.getTrendText(recentCount.HIGH, total);
     }
     
     getTrendText(count, total) {
@@ -843,9 +920,10 @@ class LightningDiceApp {
     }
     
     async refreshData() {
+        console.log('🔄 Manual refresh triggered');
         await this.loadStats();
         await this.loadResults();
-        await this.loadPredictions();
+        await this.loadPredictionsFromServer();
         await this.loadAIStats();
         await this.loadCurrentPrediction();
         this.updateUI();
@@ -853,7 +931,14 @@ class LightningDiceApp {
     
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
-        this.autoRefreshInterval = setInterval(() => this.refreshData(), this.refreshSeconds * 1000);
+        this.autoRefreshInterval = setInterval(() => {
+            console.log('🔄 Auto refresh - syncing with server');
+            this.loadStats();
+            this.loadResults();
+            this.loadPredictionsFromServer();
+            this.loadAIStats();
+            this.updateUI();
+        }, this.refreshSeconds * 1000);
     }
     
     stopAutoRefresh() {
@@ -892,6 +977,7 @@ class LightningDiceApp {
     }
 }
 
+// Initialize app
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         window.app = new LightningDiceApp();
