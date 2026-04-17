@@ -17,7 +17,7 @@ class LightningDiceApp {
         this.predictionHistory = [];
         this.currentPage = 1;
         this.itemsPerPage = 10;
-        this.maxHistorySize = 600;
+        this.maxHistorySize = 1000;
         
         this.groups = {
             LOW: { name: 'LOW', range: '3-9', numbers: [3,4,5,6,7,8,9], icon: '🔴' },
