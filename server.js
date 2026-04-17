@@ -1,4 +1,5 @@
-// server.js (Updated Full File)
+// server.js (Updated - Fixed Prediction Saving)
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -76,7 +77,6 @@ db.serialize(() => {
         PRIMARY KEY(ai_name, pattern_key)
     )`);
     
-    // New table for server AI state persistence
     db.run(`CREATE TABLE IF NOT EXISTS server_ai_state (
         ai_name TEXT PRIMARY KEY,
         state_data TEXT,
@@ -130,7 +130,6 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Broadcast to all connected clients
 function broadcast(data) {
     const message = JSON.stringify(data);
     clients.forEach(client => {
@@ -181,7 +180,6 @@ async function loadServerAIState() {
     });
 }
 
-// Save Server AI State to Database
 async function saveServerAIState(aiName) {
     let stateData = null;
     switch(aiName) {
@@ -216,7 +214,6 @@ async function saveServerAIState(aiName) {
     });
 }
 
-// Train all Server AI models with historical data
 async function trainAllServerAIs() {
     return new Promise((resolve, reject) => {
         db.all(`SELECT id, group_name, timestamp FROM results ORDER BY timestamp ASC`, async (err, results) => {
@@ -234,7 +231,6 @@ async function trainAllServerAIs() {
             serverAI.lowMid.train(history);
             serverAI.midHigh.train(history);
             
-            // Update ensemble weights
             serverAI.ensemble.updateWeights(
                 serverAI.stick.getAccuracy(),
                 serverAI.extreme.getAccuracy(),
@@ -242,7 +238,6 @@ async function trainAllServerAIs() {
                 serverAI.midHigh.getAccuracy()
             );
             
-            // Save states
             await saveServerAIState('AI_Stick');
             await saveServerAIState('AI_ExtremeSwitch');
             await saveServerAIState('AI_LowMidSwitch');
@@ -255,7 +250,7 @@ async function trainAllServerAIs() {
     });
 }
 
-// Make prediction for a result (before knowing the actual result)
+// FIXED: Make prediction for a result (returns AI predictions, NOT actual result)
 function makePrediction(previousResults) {
     if (!previousResults || previousResults.length < 2) {
         return {
@@ -276,23 +271,44 @@ function makePrediction(previousResults) {
     const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
     const predMidHigh = serverAI.midHigh.predict(currentGroup, previousGroup);
     
-    // Extract predicted groups
-    const stickGroup = predStick.prediction === "STICK" ? predStick.nextGroup : 
-                      (predStick.prediction === "SWITCH" ? predStick.nextGroup : currentGroup);
+    // FIXED: Extract the actual predicted groups from AI responses
+    let stickGroup = 'MEDIUM';
+    if (predStick.prediction === "STICK") {
+        stickGroup = predStick.nextGroup;
+    } else if (predStick.prediction === "SWITCH") {
+        stickGroup = predStick.nextGroup;
+    } else {
+        stickGroup = predStick.nextGroup || currentGroup;
+    }
     
-    let extremeGroup = predExtreme.nextGroup;
+    let extremeGroup = 'MEDIUM';
     if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
-        extremeGroup = predExtreme.pattern.split("→")[1] || 'MEDIUM';
+        const parts = predExtreme.pattern.split("→");
+        extremeGroup = parts[1]?.trim() || 'MEDIUM';
+    } else if (predExtreme.prediction === "BREAK") {
+        extremeGroup = predExtreme.nextGroup || 'MEDIUM';
+    } else {
+        extremeGroup = predExtreme.nextGroup || 'MEDIUM';
     }
     
-    let lowMidGroup = predLowMid.nextGroup;
+    let lowMidGroup = 'MEDIUM';
     if (predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
-        lowMidGroup = predLowMid.pattern.split("→")[1] || 'MEDIUM';
+        const parts = predLowMid.pattern.split("→");
+        lowMidGroup = parts[1]?.trim() || 'MEDIUM';
+    } else if (predLowMid.prediction === "BREAK") {
+        lowMidGroup = predLowMid.nextGroup || 'MEDIUM';
+    } else {
+        lowMidGroup = predLowMid.nextGroup || 'MEDIUM';
     }
     
-    let midHighGroup = predMidHigh.nextGroup;
+    let midHighGroup = 'MEDIUM';
     if (predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
-        midHighGroup = predMidHigh.pattern.split("→")[1] || 'MEDIUM';
+        const parts = predMidHigh.pattern.split("→");
+        midHighGroup = parts[1]?.trim() || 'MEDIUM';
+    } else if (predMidHigh.prediction === "BREAK") {
+        midHighGroup = predMidHigh.nextGroup || 'MEDIUM';
+    } else {
+        midHighGroup = predMidHigh.nextGroup || 'MEDIUM';
     }
     
     // Ensemble prediction
@@ -315,13 +331,14 @@ function makePrediction(previousResults) {
     };
 }
 
-// Save prediction for a result and update AI stats
+// FIXED: Save prediction for a result with CORRECT AI predictions
 async function savePredictionForResult(resultId, actualGroup, previousResults) {
     if (!previousResults || previousResults.length < 2) return null;
     
+    // Get AI predictions (NOT the actual result)
     const prediction = makePrediction(previousResults);
     
-    // Check correctness
+    // Check correctness by comparing AI predictions with actual result
     const correct = {
         stick: prediction.stick === actualGroup,
         extreme: prediction.extreme === actualGroup,
@@ -330,7 +347,17 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
         ensemble: prediction.ensemble === actualGroup
     };
     
-    // Update AI models with actual result
+    console.log(`📊 Prediction for ${resultId}:`, {
+        actual: actualGroup,
+        ai_stick: prediction.stick,
+        ai_extreme: prediction.extreme,
+        ai_lowMid: prediction.lowMid,
+        ai_midHigh: prediction.midHigh,
+        ensemble: prediction.ensemble,
+        correct: correct
+    });
+    
+    // Update AI models with actual result (for future predictions)
     const currentGroup = previousResults[0]?.group || 'MEDIUM';
     const previousGroup = previousResults[1]?.group || 'MEDIUM';
     
@@ -339,7 +366,7 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
     serverAI.lowMid.updateWithResult(actualGroup, previousGroup);
     serverAI.midHigh.updateWithResult(actualGroup, previousGroup);
     
-    // Record prediction results
+    // Record prediction results for accuracy tracking
     serverAI.stick.recordPredictionResult(correct.stick);
     serverAI.extreme.recordPredictionResult(correct.extreme);
     serverAI.lowMid.recordPredictionResult(correct.low_mid);
@@ -354,7 +381,7 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
         serverAI.midHigh.getAccuracy()
     );
     
-    // Save to database
+    // Save to database with CORRECT values
     return new Promise((resolve) => {
         db.run(`INSERT INTO predictions (result_id, ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group,
                 correct_stick, correct_extreme, correct_low_mid, correct_mid_high, correct_ensemble, timestamp)
@@ -365,19 +392,19 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
                 if (err) {
                     console.error('Error saving prediction:', err);
                 } else {
-                    // Update AI stats table
                     await updateAIStatsTable('AI_Stick', correct.stick);
                     await updateAIStatsTable('AI_ExtremeSwitch', correct.extreme);
                     await updateAIStatsTable('AI_LowMidSwitch', correct.low_mid);
                     await updateAIStatsTable('AI_MidHighSwitch', correct.mid_high);
                     await updateAIStatsTable('EnsembleVoter', correct.ensemble);
                     
-                    // Save server AI states
                     await saveServerAIState('AI_Stick');
                     await saveServerAIState('AI_ExtremeSwitch');
                     await saveServerAIState('AI_LowMidSwitch');
                     await saveServerAIState('AI_MidHighSwitch');
                     await saveServerAIState('EnsembleVoter');
+                    
+                    console.log(`✅ Prediction saved for ${resultId} - Ensemble: ${prediction.ensemble} (${correct.ensemble ? '✓' : '✗'})`);
                 }
                 resolve(prediction);
             }
@@ -385,7 +412,6 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
     });
 }
 
-// Update AI stats table
 async function updateAIStatsTable(aiName, correct) {
     return new Promise((resolve) => {
         db.get(`SELECT * FROM ai_stats WHERE ai_name = ?`, [aiName], (err, stat) => {
@@ -402,7 +428,6 @@ async function updateAIStatsTable(aiName, correct) {
     });
 }
 
-// Get previous N results for prediction
 async function getPreviousResults(limit = 5) {
     return new Promise((resolve) => {
         db.all(`SELECT group_name FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
@@ -436,7 +461,6 @@ async function collectData() {
             if (lastGameId !== gameId) {
                 lastGameId = gameId;
                 
-                // Check if result already exists
                 const exists = await new Promise((resolve) => {
                     db.get(`SELECT id FROM results WHERE id = ?`, [gameId], (err, row) => {
                         resolve(!!row);
@@ -446,13 +470,11 @@ async function collectData() {
                 if (!exists) {
                     await saveGameResult(game);
                     
-                    // Get previous results for prediction
                     const previousResults = await getPreviousResults(5);
+                    const totalResult = game.result.total;
+                    const group = getGroup(totalResult);
                     
-                    // Make and save prediction for this result
                     if (previousResults.length >= 2) {
-                        const totalResult = game.result.total;
-                        const group = getGroup(totalResult);
                         await savePredictionForResult(gameId, group, previousResults);
                         console.log(`✅ Prediction saved for game: ${gameId}`);
                     }
@@ -506,7 +528,8 @@ function getGroup(number) {
     return 'UNKNOWN';
 }
 
-// API: Get all results with pagination
+// ============ API ENDPOINTS ============
+
 app.get('/api/results', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
@@ -532,7 +555,6 @@ app.get('/api/results', (req, res) => {
     });
 });
 
-// API: Get predictions history
 app.get('/api/predictions', (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
     
@@ -548,7 +570,6 @@ app.get('/api/predictions', (req, res) => {
     });
 });
 
-// API: Get stats
 app.get('/api/stats', (req, res) => {
     db.get(`SELECT 
                 COUNT(*) as total_rounds,
@@ -574,7 +595,6 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
-// API: Get group distribution
 app.get('/api/group-distribution', (req, res) => {
     db.all(`SELECT group_name, COUNT(*) as count FROM results GROUP BY group_name`, (err, groups) => {
         if (err) {
@@ -595,7 +615,6 @@ app.get('/api/group-distribution', (req, res) => {
     });
 });
 
-// API: Get AI stats
 app.get('/api/ai-stats', (req, res) => {
     db.all(`SELECT * FROM ai_stats`, (err, stats) => {
         if (err) {
@@ -606,7 +625,6 @@ app.get('/api/ai-stats', (req, res) => {
     });
 });
 
-// API: Get latest result
 app.get('/api/latest', (req, res) => {
     db.get(`SELECT * FROM results ORDER BY timestamp DESC LIMIT 1`, (err, result) => {
         if (err) {
@@ -617,7 +635,6 @@ app.get('/api/latest', (req, res) => {
     });
 });
 
-// API: Get current prediction (for next round)
 app.get('/api/current-prediction', async (req, res) => {
     const previousResults = await getPreviousResults(5);
     if (previousResults.length < 2) {
@@ -633,24 +650,56 @@ app.get('/api/current-prediction', async (req, res) => {
     });
 });
 
-// API: Retrain all AI models
 app.post('/api/retrain-all', async (req, res) => {
     await trainAllServerAIs();
     res.json({ success: true, message: 'All AI models retrained successfully' });
 });
 
-// API: Get server AI stats
 app.get('/api/server-ai-stats', (req, res) => {
     res.json({
-        stick: serverAI.stick.getStats ? serverAI.stick.getStats() : { accuracy: serverAI.stick.getAccuracy(), totalPredictions: serverAI.stick.totalPredictions },
-        extreme: serverAI.extreme.getStats ? serverAI.extreme.getStats() : { accuracy: serverAI.extreme.getAccuracy(), totalPredictions: serverAI.extreme.totalPredictions },
-        lowMid: serverAI.lowMid.getStats ? serverAI.lowMid.getStats() : { accuracy: serverAI.lowMid.getAccuracy(), totalPredictions: serverAI.lowMid.totalPredictions },
-        midHigh: serverAI.midHigh.getStats ? serverAI.midHigh.getStats() : { accuracy: serverAI.midHigh.getAccuracy(), totalPredictions: serverAI.midHigh.totalPredictions },
+        stick: { accuracy: serverAI.stick.getAccuracy(), totalPredictions: serverAI.stick.totalPredictions },
+        extreme: { accuracy: serverAI.extreme.getAccuracy(), totalPredictions: serverAI.extreme.totalPredictions },
+        lowMid: { accuracy: serverAI.lowMid.getAccuracy(), totalPredictions: serverAI.lowMid.totalPredictions },
+        midHigh: { accuracy: serverAI.midHigh.getAccuracy(), totalPredictions: serverAI.midHigh.totalPredictions },
         ensemble: { accuracy: serverAI.ensemble.getAccuracy(), totalPredictions: serverAI.ensemble.totalPredictions }
     });
 });
 
-// Health check
+app.get('/api/load-pattern/:ai_name', (req, res) => {
+    db.all(`SELECT pattern_key, streak_value, max_streak, break_data FROM pattern_data WHERE ai_name = ?`, 
+        [req.params.ai_name], (err, patterns) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        
+        const result = {};
+        patterns.forEach(p => {
+            result[p.pattern_key] = {
+                streak_value: p.streak_value,
+                max_streak: p.max_streak,
+                break_data: JSON.parse(p.break_data)
+            };
+        });
+        res.json(result);
+    });
+});
+
+app.post('/api/save-pattern', (req, res) => {
+    const { ai_name, pattern_key, streak_value, max_streak, break_data } = req.body;
+    
+    db.run(`INSERT OR REPLACE INTO pattern_data (ai_name, pattern_key, streak_value, max_streak, break_data, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+        [ai_name, pattern_key, streak_value, max_streak, JSON.stringify(break_data), new Date().toISOString()],
+        (err) => {
+            if (err) {
+                res.status(500).json({ error: err.message });
+                return;
+            }
+            res.json({ success: true });
+        });
+});
+
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -670,7 +719,7 @@ console.log('📊 Background data collection started (every 3 seconds)');
 console.log('🤖 Server-side AI prediction engine active');
 console.log(`🔌 WebSocket server ready for real-time updates`);
 
-// Graceful shutdown handling for Railway
+// Graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received, closing server gracefully...');
     server.close(() => {
