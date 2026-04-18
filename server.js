@@ -1,4 +1,4 @@
-// server.js (Updated - Fixed Prediction Saving)
+// server.js (FULLY FIXED - Correct Prediction Saving)
 
 const express = require('express');
 const cors = require('cors');
@@ -250,7 +250,7 @@ async function trainAllServerAIs() {
     });
 }
 
-// FIXED: Make prediction for a result (returns AI predictions, NOT actual result)
+// ============ FIXED: Make prediction from AI models ============
 function makePrediction(previousResults) {
     if (!previousResults || previousResults.length < 2) {
         return {
@@ -265,21 +265,23 @@ function makePrediction(previousResults) {
     const currentGroup = previousResults[0]?.group || 'MEDIUM';
     const previousGroup = previousResults[1]?.group || 'MEDIUM';
     
+    console.log(`🔮 Making prediction - Current: ${currentGroup}, Previous: ${previousGroup}`);
+    
     // Get predictions from each AI
     const predStick = serverAI.stick.predict(currentGroup, previousGroup);
     const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
     const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
     const predMidHigh = serverAI.midHigh.predict(currentGroup, previousGroup);
     
-    // FIXED: Extract the actual predicted groups from AI responses
-    let stickGroup = 'MEDIUM';
-    if (predStick.prediction === "STICK") {
-        stickGroup = predStick.nextGroup;
-    } else if (predStick.prediction === "SWITCH") {
-        stickGroup = predStick.nextGroup;
-    } else {
-        stickGroup = predStick.nextGroup || currentGroup;
-    }
+    console.log('📊 RAW AI Predictions:', {
+        stick: { prediction: predStick.prediction, nextGroup: predStick.nextGroup, confidence: predStick.confidence },
+        extreme: { prediction: predExtreme.prediction, nextGroup: predExtreme.nextGroup, pattern: predExtreme.pattern },
+        lowMid: { prediction: predLowMid.prediction, nextGroup: predLowMid.nextGroup, pattern: predLowMid.pattern },
+        midHigh: { prediction: predMidHigh.prediction, nextGroup: predMidHigh.nextGroup, pattern: predMidHigh.pattern }
+    });
+    
+    // Extract predicted groups from AI responses
+    let stickGroup = predStick.nextGroup || currentGroup;
     
     let extremeGroup = 'MEDIUM';
     if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
@@ -315,7 +317,7 @@ function makePrediction(previousResults) {
     const ensembleResult = serverAI.ensemble.combine(predStick, predExtreme, predLowMid, predMidHigh);
     const ensembleGroup = ensembleResult.final.group;
     
-    return {
+    const finalPrediction = {
         stick: stickGroup,
         extreme: extremeGroup,
         lowMid: lowMidGroup,
@@ -329,13 +331,23 @@ function makePrediction(previousResults) {
             ensembleResult
         }
     };
+    
+    console.log('🎯 FINAL PREDICTION:', {
+        stick: finalPrediction.stick,
+        extreme: finalPrediction.extreme,
+        lowMid: finalPrediction.lowMid,
+        midHigh: finalPrediction.midHigh,
+        ensemble: finalPrediction.ensemble
+    });
+    
+    return finalPrediction;
 }
 
-// FIXED: Save prediction for a result with CORRECT AI predictions
+// ============ FIXED: Save prediction with correct values ============
 async function savePredictionForResult(resultId, actualGroup, previousResults) {
     if (!previousResults || previousResults.length < 2) return null;
     
-    // Get AI predictions (NOT the actual result)
+    // Get AI predictions
     const prediction = makePrediction(previousResults);
     
     // Check correctness by comparing AI predictions with actual result
@@ -347,7 +359,7 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
         ensemble: prediction.ensemble === actualGroup
     };
     
-    console.log(`📊 Prediction for ${resultId}:`, {
+    console.log(`📊 PREDICTION SAVE for ${resultId}:`, {
         actual: actualGroup,
         ai_stick: prediction.stick,
         ai_extreme: prediction.extreme,
@@ -381,7 +393,7 @@ async function savePredictionForResult(resultId, actualGroup, previousResults) {
         serverAI.midHigh.getAccuracy()
     );
     
-    // Save to database with CORRECT values
+    // Save to database
     return new Promise((resolve) => {
         db.run(`INSERT INTO predictions (result_id, ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group,
                 correct_stick, correct_extreme, correct_low_mid, correct_mid_high, correct_ensemble, timestamp)
@@ -707,7 +719,6 @@ app.post('/api/save-prediction', async (req, res) => {
         return res.status(400).json({ error: 'result_id required' });
     }
     
-    // Check if prediction already exists
     db.get(`SELECT id FROM predictions WHERE result_id = ?`, [result_id], async (err, existing) => {
         if (err) {
             return res.status(500).json({ error: err.message });
