@@ -1,9 +1,9 @@
-// script.js (Fully Fixed - Stable Prediction Display)
+// script.js (FULLY FIXED - Append Only, No Replace)
 
 /**
  * Lightning Dice Predictor - Four AI Pattern System
  * Main Controller with Persistent Storage & WebSocket
- * FIXED: Table shows AI predictions correctly, no auto-refresh overwrite
+ * FIXED: Append-only logic - never replaces existing data
  */
 
 class LightningDiceApp {
@@ -24,6 +24,9 @@ class LightningDiceApp {
         this.itemsPerPage = 10;
         this.maxHistorySize = 1000;
         
+        // Track processed result IDs to avoid duplicates
+        this.processedResultIds = new Set();
+        
         // Offline storage
         this.offlinePredictions = [];
         
@@ -37,19 +40,17 @@ class LightningDiceApp {
     }
     
     async init() {
-        console.log('🚀 Initializing Four AI Pattern System with Persistent Storage...');
+        console.log('🚀 Initializing Four AI Pattern System (Append-Only Mode)...');
         this.bindEvents();
         this.setupWebSocket();
         
         await this.loadStats();
         await this.loadResults();
-        await this.loadPredictionsFromServer();
+        await this.loadPredictionsFromServer(); // Only loads NEW predictions
         await this.loadAIStats();
         await this.loadPatternsFromServer();
         
-        // Sync offline data if any
         await this.syncOfflineData();
-        
         await this.loadCurrentPrediction();
         
         if (this.allResults.length >= 5) {
@@ -238,6 +239,9 @@ class LightningDiceApp {
                 payout: r.payout
             }));
             
+            // Track processed IDs
+            this.allResults.forEach(r => this.processedResultIds.add(r.id));
+            
             console.log(`✅ Loaded ${this.allResults.length} results from database`);
             
             if (this.allResults.length > 0) {
@@ -251,52 +255,55 @@ class LightningDiceApp {
         }
     }
     
+    // FIXED: APPEND-ONLY - Never replaces existing predictions
     async loadPredictionsFromServer() {
         try {
             const response = await fetch(`${this.apiBase}/predictions?limit=500`);
             if (!response.ok) throw new Error('Failed to load predictions');
             const predictions = await response.json();
             
-            // Clear existing map and history
-            this.predictionsMap.clear();
-            this.predictionHistory = [];
+            let newCount = 0;
+            let skippedCount = 0;
             
-            // Store predictions in Map for stable reference
+            // APPEND ONLY: Add new predictions, never replace existing ones
             for (const p of predictions) {
-                const predictionEntry = {
-                    id: p.result_id,
-                    time: new Date(p.result_time).toLocaleTimeString(),
-                    dice: p.dice_values,
-                    total: p.total,
-                    actualGroup: p.actual_group,
-                    predStick: p.ai_stick_group,
-                    predExtreme: p.ai_extreme_group,
-                    predLowMid: p.ai_low_mid_group,
-                    predMidHigh: p.ai_mid_high_group,
-                    ensemble: p.ensemble_group,
-                    correctStick: p.correct_stick === 1,
-                    correctExtreme: p.correct_extreme === 1,
-                    correctLowMid: p.correct_low_mid === 1,
-                    correctMidHigh: p.correct_mid_high === 1,
-                    correctEnsemble: p.correct_ensemble === 1,
-                    timestamp: new Date(p.result_time)
-                };
-                this.predictionsMap.set(p.result_id, predictionEntry);
+                // Check if we already have this prediction
+                if (!this.predictionsMap.has(p.result_id)) {
+                    const predictionEntry = {
+                        id: p.result_id,
+                        time: new Date(p.result_time).toLocaleTimeString(),
+                        dice: p.dice_values,
+                        total: p.total,
+                        actualGroup: p.actual_group,
+                        predStick: p.ai_stick_group || 'MEDIUM',
+                        predExtreme: p.ai_extreme_group || 'MEDIUM',
+                        predLowMid: p.ai_low_mid_group || 'MEDIUM',
+                        predMidHigh: p.ai_mid_high_group || 'MEDIUM',
+                        ensemble: p.ensemble_group || 'MEDIUM',
+                        correctStick: p.correct_stick === 1,
+                        correctExtreme: p.correct_extreme === 1,
+                        correctLowMid: p.correct_low_mid === 1,
+                        correctMidHigh: p.correct_mid_high === 1,
+                        correctEnsemble: p.correct_ensemble === 1,
+                        timestamp: new Date(p.result_time),
+                        source: 'api'
+                    };
+                    this.predictionsMap.set(p.result_id, predictionEntry);
+                    newCount++;
+                } else {
+                    skippedCount++;
+                }
             }
             
-            // Convert Map to array and sort by timestamp (newest first)
+            // Update history array from Map (preserves all data)
             this.predictionHistory = Array.from(this.predictionsMap.values())
                 .sort((a, b) => b.timestamp - a.timestamp);
             
-            console.log(`✅ Loaded ${this.predictionHistory.length} predictions from server`);
-            if (this.predictionHistory.length > 0) {
-                console.log('📊 Sample prediction (should show AI prediction, not actual):', {
-                    predStick: this.predictionHistory[0].predStick,
-                    actualGroup: this.predictionHistory[0].actualGroup,
-                    correct: this.predictionHistory[0].correctStick
-                });
+            console.log(`✅ API sync: ${newCount} new predictions added, ${skippedCount} existing skipped (never replaced)`);
+            
+            if (newCount > 0) {
+                this.renderHistoryTable();
             }
-            this.renderHistoryTable();
         } catch (error) {
             console.error('Error loading predictions:', error);
         }
@@ -401,7 +408,6 @@ class LightningDiceApp {
         return this.allResults.slice(0, n).map(r => r.group);
     }
     
-    // Get AI predictions for current state (using client AI models)
     getCurrentAIPredictions() {
         const lastResults = this.getLastNResults(4);
         if (lastResults.length < 2) {
@@ -431,15 +437,12 @@ class LightningDiceApp {
     extractPredictionGroup(prediction) {
         if (!prediction) return 'MEDIUM';
         
-        // For Stick AI
         if (prediction.prediction === "STICK" && prediction.nextGroup) {
             return prediction.nextGroup;
         }
         if (prediction.prediction === "SWITCH" && prediction.nextGroup) {
             return prediction.nextGroup;
         }
-        
-        // For Switch AIs (Extreme, LowMid, MidHigh)
         if (prediction.prediction === "CONTINUE" && prediction.pattern) {
             const parts = prediction.pattern.split("→");
             if (parts.length >= 2) {
@@ -454,7 +457,14 @@ class LightningDiceApp {
     }
     
     async handleNewResult(result) {
+        // Check if already processed
+        if (this.processedResultIds.has(result.id)) {
+            console.log(`⏭️ Result ${result.id} already processed, skipping`);
+            return;
+        }
+        
         console.log('📊 Handling new result:', result);
+        this.processedResultIds.add(result.id);
         
         const lastResults = this.getLastNResults(4);
         const currentGroup = lastResults.length > 0 ? lastResults[0] : result.group_name;
@@ -485,7 +495,7 @@ class LightningDiceApp {
             ensemble: ensembleGroup === actualGroup
         };
         
-        console.log(`📊 Prediction correctness:`, correct);
+        console.log(`📊 Prediction correctness:`);
         console.log(`   AI-A: ${predStickGroup} (${correct.stick ? '✓' : '✗'}) | Actual: ${actualGroup}`);
         console.log(`   AI-B: ${predExtremeGroup} (${correct.extreme ? '✓' : '✗'})`);
         console.log(`   AI-C: ${predLowMidGroup} (${correct.low_mid ? '✓' : '✗'})`);
@@ -514,7 +524,7 @@ class LightningDiceApp {
             window.EnsembleVoterV4.updateWeights(accStick, accExtreme, accLowMid, accMidHigh);
         }
         
-        // Create prediction entry
+        // Create prediction entry (ALWAYS add, never replace)
         const predictionEntry = {
             id: result.id,
             time: new Date(result.timestamp).toLocaleTimeString(),
@@ -531,10 +541,11 @@ class LightningDiceApp {
             correctLowMid: correct.low_mid,
             correctMidHigh: correct.mid_high,
             correctEnsemble: correct.ensemble,
-            timestamp: new Date(result.timestamp)
+            timestamp: new Date(result.timestamp),
+            source: 'websocket'
         };
         
-        // Store in Map (prevents duplicate)
+        // Add to Map (only if not exists - append only)
         if (!this.predictionsMap.has(result.id)) {
             this.predictionsMap.set(result.id, predictionEntry);
             // Add to history array and keep sorted
@@ -546,6 +557,10 @@ class LightningDiceApp {
                 const removed = this.predictionHistory.pop();
                 if (removed) this.predictionsMap.delete(removed.id);
             }
+            
+            console.log(`✅ New prediction added for ${result.id}`);
+        } else {
+            console.log(`⚠️ Prediction for ${result.id} already exists, skipping addition`);
         }
         
         // Add to results
@@ -575,7 +590,6 @@ class LightningDiceApp {
         this.savePredictionOffline(result.id, predStickGroup, predExtremeGroup, predLowMidGroup, predMidHighGroup, ensembleGroup, correct);
     }
     
-    // Offline storage backup
     savePredictionOffline(resultId, stick, extreme, lowMid, midHigh, ensemble, correct) {
         const offlineData = {
             result_id: resultId,
@@ -622,7 +636,6 @@ class LightningDiceApp {
                 }
             }
             
-            // Clear synced data
             localStorage.setItem('offline_predictions', '[]');
         } catch(e) {
             console.warn('Sync failed:', e);
@@ -920,10 +933,10 @@ class LightningDiceApp {
     }
     
     async refreshData() {
-        console.log('🔄 Manual refresh triggered');
+        console.log('🔄 Manual refresh triggered - only loading new data, not replacing');
         await this.loadStats();
         await this.loadResults();
-        await this.loadPredictionsFromServer();
+        await this.loadPredictionsFromServer(); // Append-only
         await this.loadAIStats();
         await this.loadCurrentPrediction();
         this.updateUI();
@@ -932,10 +945,10 @@ class LightningDiceApp {
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         this.autoRefreshInterval = setInterval(() => {
-            console.log('🔄 Auto refresh - syncing with server');
+            console.log('🔄 Auto refresh - appending new data only');
             this.loadStats();
             this.loadResults();
-            this.loadPredictionsFromServer();
+            this.loadPredictionsFromServer(); // Append-only
             this.loadAIStats();
             this.updateUI();
         }, this.refreshSeconds * 1000);
