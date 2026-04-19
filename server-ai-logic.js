@@ -1,9 +1,7 @@
-// server-ai-logic.js
-// Server-side AI Logic - Duplicate of client-side AI models for offline prediction
+// server-ai-logic.js (COMPLETE FIXED VERSION)
 
 /**
  * AI-A: Stick Pattern Detector (Server Version)
- * Tracks: LOW→LOW, MEDIUM→MEDIUM, HIGH→HIGH
  */
 class ServerAI_Stick {
     constructor() {
@@ -31,7 +29,6 @@ class ServerAI_Stick {
     train(history) {
         if (!history || history.length < 3) return false;
         
-        // Reset streaks
         for (let pattern in this.patternStreaks) {
             this.patternStreaks[pattern] = 0;
         }
@@ -80,8 +77,15 @@ class ServerAI_Stick {
     }
 
     predict(currentGroup, previousGroup) {
+        // If not a stick pattern, predict stick with current group
         if (currentGroup !== previousGroup) {
-            return this.getDefaultPrediction(currentGroup);
+            return {
+                model: this.name,
+                prediction: "STICK",
+                nextGroup: currentGroup,
+                confidence: 70,
+                accuracy: this.accuracy
+            };
         }
         
         const patternKey = `${previousGroup}→${currentGroup}`;
@@ -123,20 +127,6 @@ class ServerAI_Stick {
             breakProbability: Math.round(breakProbability),
             nextGroup: nextGroup,
             confidence: Math.round(100 - breakProbability),
-            accuracy: this.accuracy
-        };
-    }
-
-    getDefaultPrediction(group) {
-        return {
-            model: this.name,
-            prediction: "STICK",
-            currentGroup: group,
-            currentStreak: 1,
-            maxStreak: 20,
-            breakProbability: 5,
-            nextGroup: group,
-            confidence: 70,
             accuracy: this.accuracy
         };
     }
@@ -187,8 +177,7 @@ class ServerAI_Stick {
 }
 
 /**
- * AI-B: Extreme Switch Detector (Server Version)
- * Tracks: LOW→HIGH, HIGH→LOW
+ * AI-B: Extreme Switch Detector
  */
 class ServerAI_ExtremeSwitch {
     constructor() {
@@ -265,7 +254,14 @@ class ServerAI_ExtremeSwitch {
         const patternKey = `${previousGroup}→${currentGroup}`;
         
         if (!this.patternStreaks.hasOwnProperty(patternKey)) {
-            return this.getDefaultPrediction();
+            return {
+                model: this.name,
+                prediction: "CONTINUE",
+                pattern: "LOW→HIGH",
+                nextGroup: "HIGH",
+                confidence: 70,
+                accuracy: this.accuracy
+            };
         }
         
         const currentStreak = this.patternStreaks[patternKey] + 1;
@@ -297,6 +293,9 @@ class ServerAI_ExtremeSwitch {
             }
         }
         
+        const parts = patternKey.split("→");
+        const continueGroup = parts[1];
+        
         return {
             model: this.name,
             prediction: willBreak ? "BREAK" : "CONTINUE",
@@ -304,22 +303,8 @@ class ServerAI_ExtremeSwitch {
             currentStreak: currentStreak,
             maxStreak: maxStreak,
             breakProbability: Math.round(breakProbability),
-            nextGroup: nextGroup,
+            nextGroup: willBreak ? nextGroup : continueGroup,
             confidence: Math.round(100 - breakProbability),
-            accuracy: this.accuracy
-        };
-    }
-
-    getDefaultPrediction() {
-        return {
-            model: this.name,
-            prediction: "CONTINUE",
-            pattern: "LOW→HIGH",
-            currentStreak: 1,
-            maxStreak: 20,
-            breakProbability: 5,
-            nextGroup: "MEDIUM",
-            confidence: 70,
             accuracy: this.accuracy
         };
     }
@@ -372,8 +357,7 @@ class ServerAI_ExtremeSwitch {
 }
 
 /**
- * AI-C: Low-Mid Switch Detector (Server Version)
- * Tracks: LOW→MEDIUM, MEDIUM→LOW
+ * AI-C: Low-Mid Switch Detector
  */
 class ServerAI_LowMidSwitch {
     constructor() {
@@ -450,7 +434,14 @@ class ServerAI_LowMidSwitch {
         const patternKey = `${previousGroup}→${currentGroup}`;
         
         if (!this.patternStreaks.hasOwnProperty(patternKey)) {
-            return this.getDefaultPrediction();
+            return {
+                model: this.name,
+                prediction: "CONTINUE",
+                pattern: "LOW→MEDIUM",
+                nextGroup: "MEDIUM",
+                confidence: 70,
+                accuracy: this.accuracy
+            };
         }
         
         const currentStreak = this.patternStreaks[patternKey] + 1;
@@ -482,6 +473,9 @@ class ServerAI_LowMidSwitch {
             }
         }
         
+        const parts = patternKey.split("→");
+        const continueGroup = parts[1];
+        
         return {
             model: this.name,
             prediction: willBreak ? "BREAK" : "CONTINUE",
@@ -489,22 +483,8 @@ class ServerAI_LowMidSwitch {
             currentStreak: currentStreak,
             maxStreak: maxStreak,
             breakProbability: Math.round(breakProbability),
-            nextGroup: nextGroup,
+            nextGroup: willBreak ? nextGroup : continueGroup,
             confidence: Math.round(100 - breakProbability),
-            accuracy: this.accuracy
-        };
-    }
-
-    getDefaultPrediction() {
-        return {
-            model: this.name,
-            prediction: "CONTINUE",
-            pattern: "LOW→MEDIUM",
-            currentStreak: 1,
-            maxStreak: 18,
-            breakProbability: 5,
-            nextGroup: "HIGH",
-            confidence: 70,
             accuracy: this.accuracy
         };
     }
@@ -557,8 +537,7 @@ class ServerAI_LowMidSwitch {
 }
 
 /**
- * AI-D: Mid-High Switch Detector (Server Version)
- * Tracks: MEDIUM→HIGH, HIGH→MEDIUM
+ * AI-D: Mid-High Switch Detector
  */
 class ServerAI_MidHighSwitch {
     constructor() {
@@ -635,7 +614,14 @@ class ServerAI_MidHighSwitch {
         const patternKey = `${previousGroup}→${currentGroup}`;
         
         if (!this.patternStreaks.hasOwnProperty(patternKey)) {
-            return this.getDefaultPrediction();
+            return {
+                model: this.name,
+                prediction: "CONTINUE",
+                pattern: "MEDIUM→HIGH",
+                nextGroup: "HIGH",
+                confidence: 70,
+                accuracy: this.accuracy
+            };
         }
         
         const currentStreak = this.patternStreaks[patternKey] + 1;
@@ -667,6 +653,9 @@ class ServerAI_MidHighSwitch {
             }
         }
         
+        const parts = patternKey.split("→");
+        const continueGroup = parts[1];
+        
         return {
             model: this.name,
             prediction: willBreak ? "BREAK" : "CONTINUE",
@@ -674,22 +663,8 @@ class ServerAI_MidHighSwitch {
             currentStreak: currentStreak,
             maxStreak: maxStreak,
             breakProbability: Math.round(breakProbability),
-            nextGroup: nextGroup,
+            nextGroup: willBreak ? nextGroup : continueGroup,
             confidence: Math.round(100 - breakProbability),
-            accuracy: this.accuracy
-        };
-    }
-
-    getDefaultPrediction() {
-        return {
-            model: this.name,
-            prediction: "CONTINUE",
-            pattern: "MEDIUM→HIGH",
-            currentStreak: 1,
-            maxStreak: 17,
-            breakProbability: 5,
-            nextGroup: "LOW",
-            confidence: 70,
             accuracy: this.accuracy
         };
     }
@@ -763,56 +738,27 @@ class ServerEnsembleVoter {
         const voteCount = { LOW: 0, MEDIUM: 0, HIGH: 0 };
         
         // AI-A (Stick)
-        if (predStick) {
-            if (predStick.prediction === "STICK" && predStick.nextGroup) {
-                predictions[predStick.nextGroup] += predStick.confidence * this.weights.stick;
-                voteCount[predStick.nextGroup]++;
-            } else if (predStick.prediction === "SWITCH" && predStick.nextGroup) {
-                predictions[predStick.nextGroup] += 50 * this.weights.stick;
-                voteCount[predStick.nextGroup]++;
-            }
+        if (predStick && predStick.nextGroup) {
+            predictions[predStick.nextGroup] += (predStick.confidence || 50) * this.weights.stick;
+            voteCount[predStick.nextGroup]++;
         }
         
         // AI-B (Extreme Switch)
-        if (predExtreme) {
-            if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
-                const targetGroup = predExtreme.pattern.split("→")[1];
-                if (targetGroup && predictions[targetGroup] !== undefined) {
-                    predictions[targetGroup] += predExtreme.confidence * this.weights.extremeSwitch;
-                    voteCount[targetGroup]++;
-                }
-            } else if (predExtreme.prediction === "BREAK" && predExtreme.nextGroup) {
-                predictions[predExtreme.nextGroup] += 50 * this.weights.extremeSwitch;
-                voteCount[predExtreme.nextGroup]++;
-            }
+        if (predExtreme && predExtreme.nextGroup) {
+            predictions[predExtreme.nextGroup] += (predExtreme.confidence || 50) * this.weights.extremeSwitch;
+            voteCount[predExtreme.nextGroup]++;
         }
         
         // AI-C (Low-Mid Switch)
-        if (predLowMid) {
-            if (predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
-                const targetGroup = predLowMid.pattern.split("→")[1];
-                if (targetGroup && predictions[targetGroup] !== undefined) {
-                    predictions[targetGroup] += predLowMid.confidence * this.weights.lowMidSwitch;
-                    voteCount[targetGroup]++;
-                }
-            } else if (predLowMid.prediction === "BREAK" && predLowMid.nextGroup) {
-                predictions[predLowMid.nextGroup] += 50 * this.weights.lowMidSwitch;
-                voteCount[predLowMid.nextGroup]++;
-            }
+        if (predLowMid && predLowMid.nextGroup) {
+            predictions[predLowMid.nextGroup] += (predLowMid.confidence || 50) * this.weights.lowMidSwitch;
+            voteCount[predLowMid.nextGroup]++;
         }
         
         // AI-D (Mid-High Switch)
-        if (predMidHigh) {
-            if (predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
-                const targetGroup = predMidHigh.pattern.split("→")[1];
-                if (targetGroup && predictions[targetGroup] !== undefined) {
-                    predictions[targetGroup] += predMidHigh.confidence * this.weights.midHighSwitch;
-                    voteCount[targetGroup]++;
-                }
-            } else if (predMidHigh.prediction === "BREAK" && predMidHigh.nextGroup) {
-                predictions[predMidHigh.nextGroup] += 50 * this.weights.midHighSwitch;
-                voteCount[predMidHigh.nextGroup]++;
-            }
+        if (predMidHigh && predMidHigh.nextGroup) {
+            predictions[predMidHigh.nextGroup] += (predMidHigh.confidence || 50) * this.weights.midHighSwitch;
+            voteCount[predMidHigh.nextGroup]++;
         }
         
         // Find winner
@@ -874,7 +820,6 @@ class ServerEnsembleVoter {
     }
 }
 
-// Export all server AI classes
 module.exports = {
     ServerAI_Stick,
     ServerAI_ExtremeSwitch,
