@@ -721,3 +721,15 @@ input:checked + .slider:before {
     font-weight: 600;
     color: #fbbf24;
 }
+
+/* Pending status styling */
+.prediction-badge.pending {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
