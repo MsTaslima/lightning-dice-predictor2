@@ -1,7 +1,8 @@
-// server-ai-logic.js (COMPLETE FIXED VERSION)
+// server-ai-logic.js (COMPLETE FIXED VERSION - All AI Models Working Correctly)
 
 /**
  * AI-A: Stick Pattern Detector (Server Version)
+ * Tracks: LOW→LOW, MEDIUM→MEDIUM, HIGH→HIGH
  */
 class ServerAI_Stick {
     constructor() {
@@ -77,7 +78,6 @@ class ServerAI_Stick {
     }
 
     predict(currentGroup, previousGroup) {
-        // If not a stick pattern, predict stick with current group
         if (currentGroup !== previousGroup) {
             return {
                 model: this.name,
@@ -177,7 +177,8 @@ class ServerAI_Stick {
 }
 
 /**
- * AI-B: Extreme Switch Detector
+ * AI-B: Extreme Switch Detector (FIXED)
+ * Tracks: LOW→HIGH, HIGH→LOW
  */
 class ServerAI_ExtremeSwitch {
     constructor() {
@@ -250,21 +251,26 @@ class ServerAI_ExtremeSwitch {
         }
     }
 
+    // FIXED: predict function for AI-B
     predict(currentGroup, previousGroup) {
         const patternKey = `${previousGroup}→${currentGroup}`;
         
+        // If not an extreme switch pattern
         if (!this.patternStreaks.hasOwnProperty(patternKey)) {
             return {
                 model: this.name,
                 prediction: "CONTINUE",
                 pattern: "LOW→HIGH",
-                nextGroup: "HIGH",
-                confidence: 70,
+                currentStreak: 1,
+                maxStreak: this.defaultMaxStreak["LOW→HIGH"],
+                breakProbability: 5,
+                nextGroup: "MEDIUM",
+                confidence: 65,
                 accuracy: this.accuracy
             };
         }
         
-        const currentStreak = this.patternStreaks[patternKey] + 1;
+        const currentStreak = (this.patternStreaks[patternKey] || 0) + 1;
         const history = this.patternHistory[patternKey];
         const maxStreak = history.maxStreak > 0 ? history.maxStreak : this.defaultMaxStreak[patternKey];
         
@@ -283,6 +289,7 @@ class ServerAI_ExtremeSwitch {
         }
         
         let nextGroup = "MEDIUM";
+        
         if (willBreak && history.nextAfterBreak) {
             let maxCount = 0;
             for (let [group, count] of Object.entries(history.nextAfterBreak)) {
@@ -293,8 +300,10 @@ class ServerAI_ExtremeSwitch {
             }
         }
         
-        const parts = patternKey.split("→");
-        const continueGroup = parts[1];
+        if (!willBreak) {
+            const parts = patternKey.split("→");
+            nextGroup = parts[1]?.trim() || "MEDIUM";
+        }
         
         return {
             model: this.name,
@@ -303,7 +312,7 @@ class ServerAI_ExtremeSwitch {
             currentStreak: currentStreak,
             maxStreak: maxStreak,
             breakProbability: Math.round(breakProbability),
-            nextGroup: willBreak ? nextGroup : continueGroup,
+            nextGroup: nextGroup,
             confidence: Math.round(100 - breakProbability),
             accuracy: this.accuracy
         };
@@ -358,6 +367,7 @@ class ServerAI_ExtremeSwitch {
 
 /**
  * AI-C: Low-Mid Switch Detector
+ * Tracks: LOW→MEDIUM, MEDIUM→LOW
  */
 class ServerAI_LowMidSwitch {
     constructor() {
@@ -438,13 +448,16 @@ class ServerAI_LowMidSwitch {
                 model: this.name,
                 prediction: "CONTINUE",
                 pattern: "LOW→MEDIUM",
+                currentStreak: 1,
+                maxStreak: this.defaultMaxStreak["LOW→MEDIUM"],
+                breakProbability: 5,
                 nextGroup: "MEDIUM",
-                confidence: 70,
+                confidence: 65,
                 accuracy: this.accuracy
             };
         }
         
-        const currentStreak = this.patternStreaks[patternKey] + 1;
+        const currentStreak = (this.patternStreaks[patternKey] || 0) + 1;
         const history = this.patternHistory[patternKey];
         const maxStreak = history.maxStreak > 0 ? history.maxStreak : this.defaultMaxStreak[patternKey];
         
@@ -473,8 +486,10 @@ class ServerAI_LowMidSwitch {
             }
         }
         
-        const parts = patternKey.split("→");
-        const continueGroup = parts[1];
+        if (!willBreak) {
+            const parts = patternKey.split("→");
+            nextGroup = parts[1]?.trim() || "MEDIUM";
+        }
         
         return {
             model: this.name,
@@ -483,7 +498,7 @@ class ServerAI_LowMidSwitch {
             currentStreak: currentStreak,
             maxStreak: maxStreak,
             breakProbability: Math.round(breakProbability),
-            nextGroup: willBreak ? nextGroup : continueGroup,
+            nextGroup: nextGroup,
             confidence: Math.round(100 - breakProbability),
             accuracy: this.accuracy
         };
@@ -537,7 +552,8 @@ class ServerAI_LowMidSwitch {
 }
 
 /**
- * AI-D: Mid-High Switch Detector
+ * AI-D: Mid-High Switch Detector (FIXED)
+ * Tracks: MEDIUM→HIGH, HIGH→MEDIUM
  */
 class ServerAI_MidHighSwitch {
     constructor() {
@@ -610,21 +626,26 @@ class ServerAI_MidHighSwitch {
         }
     }
 
+    // FIXED: predict function for AI-D
     predict(currentGroup, previousGroup) {
         const patternKey = `${previousGroup}→${currentGroup}`;
         
+        // If not a mid-high switch pattern
         if (!this.patternStreaks.hasOwnProperty(patternKey)) {
             return {
                 model: this.name,
                 prediction: "CONTINUE",
                 pattern: "MEDIUM→HIGH",
-                nextGroup: "HIGH",
-                confidence: 70,
+                currentStreak: 1,
+                maxStreak: this.defaultMaxStreak["MEDIUM→HIGH"],
+                breakProbability: 5,
+                nextGroup: "MEDIUM",
+                confidence: 65,
                 accuracy: this.accuracy
             };
         }
         
-        const currentStreak = this.patternStreaks[patternKey] + 1;
+        const currentStreak = (this.patternStreaks[patternKey] || 0) + 1;
         const history = this.patternHistory[patternKey];
         const maxStreak = history.maxStreak > 0 ? history.maxStreak : this.defaultMaxStreak[patternKey];
         
@@ -642,7 +663,8 @@ class ServerAI_MidHighSwitch {
             if (breakProbability > 35) breakProbability = 35;
         }
         
-        let nextGroup = "LOW";
+        let nextGroup = "MEDIUM";
+        
         if (willBreak && history.nextAfterBreak) {
             let maxCount = 0;
             for (let [group, count] of Object.entries(history.nextAfterBreak)) {
@@ -653,8 +675,10 @@ class ServerAI_MidHighSwitch {
             }
         }
         
-        const parts = patternKey.split("→");
-        const continueGroup = parts[1];
+        if (!willBreak) {
+            const parts = patternKey.split("→");
+            nextGroup = parts[1]?.trim() || "MEDIUM";
+        }
         
         return {
             model: this.name,
@@ -663,7 +687,7 @@ class ServerAI_MidHighSwitch {
             currentStreak: currentStreak,
             maxStreak: maxStreak,
             breakProbability: Math.round(breakProbability),
-            nextGroup: willBreak ? nextGroup : continueGroup,
+            nextGroup: nextGroup,
             confidence: Math.round(100 - breakProbability),
             accuracy: this.accuracy
         };
@@ -820,6 +844,7 @@ class ServerEnsembleVoter {
     }
 }
 
+// Export all server AI classes
 module.exports = {
     ServerAI_Stick,
     ServerAI_ExtremeSwitch,
