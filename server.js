@@ -614,6 +614,47 @@ function getGroup(number) {
 
 // ============ API ENDPOINTS ============
 
+// DEBUG: Check what's actually in database
+app.get('/api/debug/check-prediction/:result_id', (req, res) => {
+    const resultId = req.params.result_id;
+    
+    db.get(`SELECT p.*, r.group_name as actual_group, r.total, r.dice_values
+            FROM predictions p
+            JOIN results r ON p.result_id = r.id
+            WHERE p.result_id = ?`, [resultId], (err, prediction) => {
+        if (err || !prediction) {
+            res.json({ error: 'Not found', result_id: resultId });
+            return;
+        }
+        
+        res.json({
+            result_id: resultId,
+            actual_group: prediction.actual_group,
+            ai_stick_group: prediction.ai_stick_group,
+            ai_extreme_group: prediction.ai_extreme_group,
+            ai_low_mid_group: prediction.ai_low_mid_group,
+            ai_mid_high_group: prediction.ai_mid_high_group,
+            ensemble_group: prediction.ensemble_group,
+            correct_stick: prediction.correct_stick === 1,
+            explanation: `AI predicted ${prediction.ai_stick_group}, Actual is ${prediction.actual_group} → ${prediction.ai_stick_group === prediction.actual_group ? 'Database says CORRECT' : 'Database says INCORRECT'}`
+        });
+    });
+});
+
+// DEBUG: List all predictions
+app.get('/api/debug/all-predictions', (req, res) => {
+    db.all(`SELECT p.result_id, p.ai_stick_group, r.group_name as actual_group, p.correct_stick
+            FROM predictions p
+            JOIN results r ON p.result_id = r.id
+            ORDER BY p.timestamp DESC LIMIT 10`, (err, predictions) => {
+        if (err) {
+            res.json({ error: err.message });
+            return;
+        }
+        res.json(predictions);
+    });
+});
+
 app.get('/api/results', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
