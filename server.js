@@ -600,6 +600,8 @@ async function updateAIStatsTable(aiName, correct) {
 // ============ BROADCAST FUNCTIONS ============
 
 async function broadcastFullDataOnNewResult(gameResult, predictionData) {
+    console.log(`📡 Preparing broadcast for ${clients.size} clients...`);
+    
     const [results, predictions, stats, aiStats] = await Promise.all([
         getResultsData(100),
         getPredictionsData(500),
@@ -607,7 +609,7 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
         getAIStatsData()
     ]);
     
-    console.log(`📡 Broadcasting to ${clients.size} clients: ${results.length} results, ${predictions.length} predictions`);
+    console.log(`📊 Data counts - Results: ${results.length}, Predictions: ${predictions.length}`);
     
     const message = JSON.stringify({
         type: 'new_result',
@@ -622,16 +624,19 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
         prediction: predictionData,
         history: predictions,
         stats: stats,
-        aiStats: aiStats
+        aiStats: aiStats,
+        allResults: results  // FIX: Add this for Recent Results
     });
     
+    let sentCount = 0;
     clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(message);
+            sentCount++;
         }
     });
+    console.log(`✅ Broadcast sent to ${sentCount} clients`);
 }
-
 // ============ DATA COLLECTION ============
 
 let lastGameId = null;
