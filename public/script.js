@@ -1,4 +1,6 @@
-// script.js (WebSocket-Only - No Auto Refresh API Calls)
+// ============================================================
+// COMPLETE script.js (WebSocket-Only Version)
+// ============================================================
 
 class LightningDiceApp {
     constructor() {
@@ -23,12 +25,8 @@ class LightningDiceApp {
         console.log('🚀 Initializing WebSocket-Only AI Display System...');
         this.bindEvents();
         
-        // Initial data load (only once when page loads)
         await this.loadInitialData();
-        
-        // Setup WebSocket for real-time updates (no polling)
         this.setupWebSocket();
-        
         this.setupCollapsibleStats();
         this.isInitialized = true;
     }
@@ -37,12 +35,10 @@ class LightningDiceApp {
         console.log('📥 Loading initial data...');
         
         try {
-            // Load all data from single endpoint
             const response = await fetch(`${this.apiBase}/all-data`);
             if (!response.ok) throw new Error('Failed to load initial data');
             const data = await response.json();
             
-            // Update all UI with initial data
             this.allResults = data.results || [];
             this.predictionHistory = data.predictions || [];
             
@@ -84,9 +80,6 @@ class LightningDiceApp {
                 } else if (data.type === 'prediction_pending') {
                     console.log('⏳ Prediction pending update');
                     this.updatePendingStatus(data.data);
-                } else if (data.type === 'initial_data') {
-                    console.log('📥 Initial data via WebSocket');
-                    this.handleInitialData(data.data);
                 }
             };
             
@@ -107,38 +100,11 @@ class LightningDiceApp {
     }
     
     handleRealtimeUpdate(data) {
-        // Update results array with new result
         if (data.result) {
             this.allResults.unshift(data.result);
             if (this.allResults.length > 100) this.allResults.pop();
         }
         
-        // Update predictions history
-        if (data.prediction && data.result) {
-            const newPrediction = {
-                id: data.result.id,
-                time: new Date().toLocaleTimeString(),
-                dice: data.result.diceValues || '--',
-                total: data.result.total,
-                actualGroup: data.result.group,
-                predStick: data.prediction.stick || 'MEDIUM',
-                predExtreme: data.prediction.extreme || 'MEDIUM',
-                predLowMid: data.prediction.lowMid || 'MEDIUM',
-                predMidHigh: data.prediction.midHigh || 'MEDIUM',
-                ensemble: data.prediction.ensemble || 'MEDIUM',
-                correctStick: data.prediction.correctStick || false,
-                correctExtreme: data.prediction.correctExtreme || false,
-                correctLowMid: data.prediction.correctLowMid || false,
-                correctMidHigh: data.prediction.correctMidHigh || false,
-                correctEnsemble: data.prediction.correctEnsemble || false,
-                timestamp: new Date(),
-                isPending: false
-            };
-            this.predictionHistory.unshift(newPrediction);
-            if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
-        }
-        
-        // Update all UI components
         if (data.prediction) this.displayServerPrediction(data.prediction);
         if (data.history) this.predictionHistory = data.history;
         if (data.stats) this.updateStatsDisplay(data.stats);
@@ -148,12 +114,10 @@ class LightningDiceApp {
         this.updateRecentResultsDisplay();
         this.updateStatisticsTable();
         this.updateGroupProbabilities();
-        
         this.animateNewResult();
     }
     
     updatePendingStatus(data) {
-        // Update pending status in history table
         const pendingPrediction = this.predictionHistory.find(p => p.id === data.result_id);
         if (pendingPrediction) {
             pendingPrediction.isPending = true;
@@ -161,23 +125,9 @@ class LightningDiceApp {
         }
     }
     
-    handleInitialData(data) {
-        if (data.results) this.allResults = data.results;
-        if (data.predictions) this.predictionHistory = data.predictions;
-        if (data.currentPrediction) this.displayServerPrediction(data.currentPrediction);
-        if (data.stats) this.updateStatsDisplay(data.stats);
-        if (data.aiStats) this.updateAIDisplay(data.aiStats);
-        
-        this.renderHistoryTable();
-        this.updateRecentResultsDisplay();
-        this.updateStatisticsTable();
-        this.updateGroupProbabilities();
-    }
-    
     displayServerPrediction(prediction) {
         if (!prediction) return;
         
-        // AI-A (Stick)
         const stickPredEl = document.getElementById('aiStickPred');
         const stickConfEl = document.getElementById('aiStickConf');
         const stickInputEl = document.getElementById('aiStickInput');
@@ -188,7 +138,6 @@ class LightningDiceApp {
             stickInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
         }
         
-        // AI-B (Extreme Switch)
         const extremePredEl = document.getElementById('aiExtremePred');
         const extremeConfEl = document.getElementById('aiExtremeConf');
         const extremeInputEl = document.getElementById('aiExtremeInput');
@@ -199,7 +148,6 @@ class LightningDiceApp {
             extremeInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
         }
         
-        // AI-C (Low-Mid Switch)
         const lowMidPredEl = document.getElementById('aiLowMidPred');
         const lowMidConfEl = document.getElementById('aiLowMidConf');
         const lowMidInputEl = document.getElementById('aiLowMidInput');
@@ -210,7 +158,6 @@ class LightningDiceApp {
             lowMidInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
         }
         
-        // AI-D (Mid-High Switch)
         const midHighPredEl = document.getElementById('aiMidHighPred');
         const midHighConfEl = document.getElementById('aiMidHighConf');
         const midHighInputEl = document.getElementById('aiMidHighInput');
@@ -221,7 +168,6 @@ class LightningDiceApp {
             midHighInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
         }
         
-        // Ensemble
         const finalIcon = document.getElementById('finalIcon');
         const finalName = document.getElementById('finalName');
         const finalRange = document.getElementById('finalRange');
