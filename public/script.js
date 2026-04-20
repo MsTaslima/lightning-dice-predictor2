@@ -1,5 +1,5 @@
 // ============================================================
-// COMPLETE script.js (FIXED - History Table & Recent Results Persistence)
+// COMPLETE script.js (FULLY FIXED - Recent Results & Pattern Persistence)
 // ============================================================
 
 class LightningDiceApp {
@@ -8,6 +8,7 @@ class LightningDiceApp {
         this.ws = null;
         this.allResults = [];
         this.predictionHistory = [];
+        this.currentPrediction = null;  // FIX: Store current prediction for persistence
         this.currentPage = 1;
         this.itemsPerPage = 10;
         this.isInitialized = false;
@@ -39,14 +40,17 @@ class LightningDiceApp {
             if (!response.ok) throw new Error('Failed to load initial data');
             const data = await response.json();
             
-            // FIX 1: Load results properly
+            // Load results properly
             this.allResults = data.results || [];
             
-            // FIX 2: Load predictions history properly
+            // Load predictions history properly
             this.predictionHistory = data.predictions || [];
             
+            // Store current prediction for pattern display
+            this.currentPrediction = data.currentPrediction || null;
+            
             // Display all data
-            this.displayServerPrediction(data.currentPrediction);
+            this.displayServerPrediction(this.currentPrediction);
             this.renderHistoryTable();
             this.updateRecentResultsDisplay();
             this.updateStatisticsTable();
@@ -57,7 +61,6 @@ class LightningDiceApp {
             console.log(`✅ Initial data loaded: ${this.allResults.length} results, ${this.predictionHistory.length} predictions`);
         } catch (error) {
             console.error('Error loading initial data:', error);
-            // Retry after 2 seconds if failed
             setTimeout(() => this.loadInitialData(), 2000);
         }
     }
@@ -106,14 +109,17 @@ class LightningDiceApp {
     }
     
     handleRealtimeUpdate(data) {
-        // FIX 3: Add new result to the beginning of allResults array
+        // Add new result to the beginning of allResults array
         if (data.result) {
             this.allResults.unshift(data.result);
             // Keep only last 100 results to prevent memory issues
             if (this.allResults.length > 100) this.allResults.pop();
+            
+            // Immediately update Recent Results display
+            this.updateRecentResultsDisplay();
         }
         
-        // FIX 4: Add new prediction to history
+        // Add new prediction to history
         if (data.prediction && data.result) {
             const newPrediction = {
                 id: data.result.id,
@@ -137,23 +143,30 @@ class LightningDiceApp {
             this.predictionHistory.unshift(newPrediction);
             // Keep only last 1000 predictions
             if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
+            
+            // Re-render history table
+            this.renderHistoryTable();
         }
         
         // Update predictions history if provided
         if (data.history) {
             this.predictionHistory = data.history;
+            this.renderHistoryTable();
+        }
+        
+        // Update current prediction display
+        if (data.prediction) {
+            this.currentPrediction = data.prediction;
+            this.displayServerPrediction(data.prediction);
         }
         
         // Update all UI components
-        if (data.prediction) this.displayServerPrediction(data.prediction);
         if (data.stats) this.updateStatsDisplay(data.stats);
         if (data.aiStats) this.updateAIDisplay(data.aiStats);
         
-        // Re-render UI
-        this.renderHistoryTable();
-        this.updateRecentResultsDisplay();
-        this.updateStatisticsTable();
+        // Update other displays
         this.updateGroupProbabilities();
+        this.updateStatisticsTable();
         
         this.animateNewResult();
     }
@@ -167,7 +180,13 @@ class LightningDiceApp {
     }
     
     displayServerPrediction(prediction) {
-        if (!prediction) return;
+        if (!prediction) {
+            console.log('⚠️ No prediction data available');
+            return;
+        }
+        
+        // Store current prediction for persistence
+        this.currentPrediction = prediction;
         
         const stickPredEl = document.getElementById('aiStickPred');
         const stickConfEl = document.getElementById('aiStickConf');
@@ -267,7 +286,6 @@ class LightningDiceApp {
         const tbody = document.getElementById('historyTableBody');
         if (!tbody) return;
         
-        // FIX 5: Ensure we have data to display
         if (!this.predictionHistory || this.predictionHistory.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8">No prediction history yet. Waiting for data...</td></tr>';
             this.updatePaginationControls();
@@ -337,7 +355,6 @@ class LightningDiceApp {
         const resultsGrid = document.getElementById('resultsGrid');
         if (!resultsGrid) return;
         
-        // FIX 6: Show message if no results
         if (!this.allResults || this.allResults.length === 0) {
             resultsGrid.innerHTML = '<div class="loading">No results yet. Waiting for data...</div>';
             return;
