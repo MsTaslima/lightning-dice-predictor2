@@ -1,5 +1,5 @@
 // ============================================================
-// COMPLETE server.js (WebSocket-Optimized Version)
+// COMPLETE server.js (FIXED - With all corrections)
 // ============================================================
 
 const express = require('express');
@@ -120,6 +120,9 @@ const wss = new WebSocket.Server({ server });
 const clients = new Set();
 
 wss.on('connection', (ws) => {
+    // FIX 2: Increase max listeners to prevent memory leak warning
+    ws.setMaxListeners(20);
+    
     clients.add(ws);
     console.log(`🔌 Client connected. Total clients: ${clients.size}`);
     
@@ -221,7 +224,7 @@ async function trainAllServerAIs() {
     return new Promise((resolve, reject) => {
         db.all(`SELECT id, group_name, timestamp FROM results ORDER BY timestamp ASC`, async (err, results) => {
             if (err || !results || results.length < 3) {
-                console.log('⚠️ Not enough data to train server AI models');
+                console.log('⚠️ Not enough data to train server AI models (need at least 3 results)');
                 resolve();
                 return;
             }
@@ -662,23 +665,34 @@ async function collectData() {
                 });
                 
                 if (!exists) {
+                    console.log(`🆕 New game detected: ${gameId}`);
+                    
+                    // FIX 1: Get previous results BEFORE saving prediction
                     const previousResults = await getPreviousResultsForPrediction(5);
                     
+                    let predictionData = null;
+                    
+                    // Save prediction FIRST (before result arrives)
                     if (previousResults.length >= 2 && !pendingPredictions.has(gameId)) {
                         pendingPredictions.add(gameId);
-                        await savePredictionOnly(gameId, previousResults);
-                        
+                        predictionData = await savePredictionOnly(gameId, previousResults);
                         broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
+                        console.log(`📝 Prediction saved for ${gameId}`);
                     }
                     
+                    // THEN save the actual result
                     const savedResult = await saveGameResult(game);
+                    console.log(`💾 Result saved for ${gameId}`);
                     
+                    // THEN update prediction with actual result
                     const totalResult = game.result.total;
                     const group = getGroup(totalResult);
                     await updatePredictionWithResult(gameId, group);
+                    console.log(`📊 Prediction updated with result: ${group}`);
                     
                     pendingPredictions.delete(gameId);
                     
+                    // Update AI models with the actual result
                     const previousGroups = await getPreviousResultsForPrediction(3);
                     const currentGroup = previousGroups[0]?.group || group;
                     const previousGroup = previousGroups[1]?.group || currentGroup;
@@ -693,8 +707,9 @@ async function collectData() {
                     await saveServerAIState('AI_LowMidSwitch');
                     await saveServerAIState('AI_MidHighSwitch');
                     
-                    const predictionData = await getCurrentPredictionData();
-                    await broadcastFullDataOnNewResult(savedResult, predictionData);
+                    // Broadcast full data to all connected clients
+                    const currentPrediction = await getCurrentPredictionData();
+                    await broadcastFullDataOnNewResult(savedResult, currentPrediction);
                     
                     console.log(`✅ Complete flow done for game: ${gameId}`);
                 }
