@@ -1,6 +1,10 @@
 // ============================================================
-// COMPLETE server.js (FIXED - With all corrections)
+// COMPLETE server.js (FIXED - All issues resolved)
 // ============================================================
+
+// FIX 1: Increase max listeners to prevent memory leak warnings
+require('events').EventEmitter.defaultMaxListeners = 20;
+process.setMaxListeners(20);
 
 const express = require('express');
 const cors = require('cors');
@@ -120,8 +124,13 @@ const wss = new WebSocket.Server({ server });
 const clients = new Set();
 
 wss.on('connection', (ws) => {
-    // FIX 2: Increase max listeners to prevent memory leak warning
+    // FIX 2: Proper WebSocket error handling
     ws.setMaxListeners(20);
+    
+    // Use 'once' for error to prevent memory leak
+    ws.once('error', (error) => {
+        console.error('WebSocket error:', error);
+    });
     
     clients.add(ws);
     console.log(`🔌 Client connected. Total clients: ${clients.size}`);
@@ -129,10 +138,6 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         clients.delete(ws);
         console.log(`🔌 Client disconnected. Total clients: ${clients.size}`);
-    });
-    
-    ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
     });
 });
 
@@ -423,18 +428,20 @@ async function getCurrentPredictionData() {
 
 async function savePredictionOnly(resultId, previousResults) {
     if (!previousResults || previousResults.length < 2) {
-        console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history`);
+        console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history (need 2, got ${previousResults?.length || 0})`);
         return null;
     }
     
+    console.log(`🔮 Generating prediction for ${resultId} using history:`, previousResults.map(r => r.group));
+    
     const prediction = await getCurrentPredictionData();
     
-    console.log(`\n📝 SAVING PREDICTION ONLY (before result) for ${resultId}:`);
-    console.log(`   AI-A (Stick): ${prediction.stick}`);
-    console.log(`   AI-B (Extreme): ${prediction.extreme}`);
-    console.log(`   AI-C (LowMid): ${prediction.lowMid}`);
-    console.log(`   AI-D (MidHigh): ${prediction.midHigh}`);
-    console.log(`   ENSEMBLE: ${prediction.ensemble}`);
+    console.log(`\n📝 SAVING PREDICTION for ${resultId}:`);
+    console.log(`   AI-A (Stick): ${prediction.stick} (${prediction.stickConfidence}%)`);
+    console.log(`   AI-B (Extreme): ${prediction.extreme} (${prediction.extremeConfidence}%)`);
+    console.log(`   AI-C (LowMid): ${prediction.lowMid} (${prediction.lowMidConfidence}%)`);
+    console.log(`   AI-D (MidHigh): ${prediction.midHigh} (${prediction.midHighConfidence}%)`);
+    console.log(`   ENSEMBLE: ${prediction.ensemble} (${prediction.ensembleConfidence}%)`);
     
     const existing = await new Promise((resolve) => {
         db.get(`SELECT id FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
@@ -454,9 +461,13 @@ async function savePredictionOnly(resultId, previousResults) {
                     WHERE result_id = ?`,
                 [prediction.stick, prediction.extreme, prediction.lowMid, prediction.midHigh, prediction.ensemble, new Date().toISOString(), resultId],
                 (err) => {
-                    if (err) console.error('Error updating prediction:', err);
-                    else console.log(`✅ Prediction UPDATED for ${resultId}`);
-                    resolve(prediction);
+                    if (err) {
+                        console.error('Error updating prediction:', err);
+                        resolve(null);
+                    } else {
+                        console.log(`✅ Prediction UPDATED for ${resultId}`);
+                        resolve(prediction);
+                    }
                 }
             );
         });
@@ -478,9 +489,13 @@ async function savePredictionOnly(resultId, previousResults) {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, -1, -1)`,
                 [resultId, prediction.stick, prediction.extreme, prediction.lowMid, prediction.midHigh, prediction.ensemble, new Date().toISOString()],
                 (err) => {
-                    if (err) console.error('Error saving prediction:', err);
-                    else console.log(`✅ Prediction INSERTED for ${resultId} (pending result)`);
-                    resolve(prediction);
+                    if (err) {
+                        console.error('Error saving prediction:', err);
+                        resolve(null);
+                    } else {
+                        console.log(`✅ Prediction INSERTED for ${resultId}`);
+                        resolve(prediction);
+                    }
                 }
             );
         });
@@ -667,24 +682,28 @@ async function collectData() {
                 if (!exists) {
                     console.log(`🆕 New game detected: ${gameId}`);
                     
-                    // FIX 1: Get previous results BEFORE saving prediction
                     const previousResults = await getPreviousResultsForPrediction(5);
                     
                     let predictionData = null;
                     
-                    // Save prediction FIRST (before result arrives)
+                    // FIX 3: Save prediction BEFORE result with proper history check
                     if (previousResults.length >= 2 && !pendingPredictions.has(gameId)) {
                         pendingPredictions.add(gameId);
+                        console.log(`🔮 Generating prediction for ${gameId} with history:`, previousResults.map(r => r.group));
                         predictionData = await savePredictionOnly(gameId, previousResults);
-                        broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
-                        console.log(`📝 Prediction saved for ${gameId}`);
+                        if (predictionData) {
+                            broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
+                            console.log(`✅ Prediction saved successfully for ${gameId}`);
+                        } else {
+                            console.log(`❌ Failed to save prediction for ${gameId}`);
+                        }
+                    } else {
+                        console.log(`⚠️ Cannot save prediction for ${gameId}: history length = ${previousResults.length}`);
                     }
                     
-                    // THEN save the actual result
                     const savedResult = await saveGameResult(game);
                     console.log(`💾 Result saved for ${gameId}`);
                     
-                    // THEN update prediction with actual result
                     const totalResult = game.result.total;
                     const group = getGroup(totalResult);
                     await updatePredictionWithResult(gameId, group);
@@ -692,7 +711,6 @@ async function collectData() {
                     
                     pendingPredictions.delete(gameId);
                     
-                    // Update AI models with the actual result
                     const previousGroups = await getPreviousResultsForPrediction(3);
                     const currentGroup = previousGroups[0]?.group || group;
                     const previousGroup = previousGroups[1]?.group || currentGroup;
@@ -707,7 +725,6 @@ async function collectData() {
                     await saveServerAIState('AI_LowMidSwitch');
                     await saveServerAIState('AI_MidHighSwitch');
                     
-                    // Broadcast full data to all connected clients
                     const currentPrediction = await getCurrentPredictionData();
                     await broadcastFullDataOnNewResult(savedResult, currentPrediction);
                     
@@ -724,7 +741,7 @@ async function collectData() {
 
 // ============ API ENDPOINTS ============
 
-// NEW: Single endpoint for all data
+// Main endpoint for all data
 app.get('/api/all-data', async (req, res) => {
     try {
         const [results, predictions, stats, aiStats, currentPrediction] = await Promise.all([
