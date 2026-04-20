@@ -1,4 +1,6 @@
-// server.js (COMPLETE - Prediction First, Result Later System)
+// ============================================================
+// COMPLETE server.js (WebSocket-Optimized Version)
+// ============================================================
 
 const express = require('express');
 const cors = require('cors');
@@ -29,7 +31,7 @@ if (!fs.existsSync(dbDir)) {
 // Database setup
 const db = new sqlite3.Database(path.join(dbDir, 'lightning_dice.db'));
 
-// Create tables (UPDATED for new system)
+// Create tables
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS results (
         id TEXT PRIMARY KEY,
@@ -42,7 +44,6 @@ db.serialize(() => {
         payout INTEGER
     )`);
     
-    // NEW: Predictions table with separate prediction and actual fields
     db.run(`CREATE TABLE IF NOT EXISTS predictions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         result_id TEXT UNIQUE,
@@ -104,9 +105,9 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static('public'));
 
-// WebSocket Server for real-time updates
+// WebSocket Server
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor - Four AI Pattern System`);
+    console.log(`\n⚡ Lightning Dice Predictor - WebSocket Optimized`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`🚀 Server running on port ${PORT}\n`);
     loadServerAIState();
@@ -252,15 +253,178 @@ async function trainAllServerAIs() {
     });
 }
 
-// ============ NEW: Save Prediction ONLY (before result arrives) ============
+// ============ DATA RETRIEVAL HELPER FUNCTIONS ============
+
+function getResultsData(limit = 100) {
+    return new Promise((resolve) => {
+        db.all(`SELECT id, total, group_name as group, multiplier, dice_values as diceValues, timestamp 
+                FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, rows) => {
+            if (err) resolve([]);
+            else resolve(rows || []);
+        });
+    });
+}
+
+function getPredictionsData(limit = 500) {
+    return new Promise((resolve) => {
+        db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
+                FROM predictions p
+                LEFT JOIN results r ON p.result_id = r.id
+                ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, rows) => {
+            if (err) resolve([]);
+            else {
+                const transformed = (rows || []).map(p => ({
+                    id: p.result_id,
+                    time: p.prediction_timestamp ? new Date(p.prediction_timestamp).toLocaleTimeString() : '--',
+                    dice: p.dice_values || '--',
+                    total: p.total || '--',
+                    actualGroup: p.actual_group || '?',
+                    predStick: p.ai_stick_group || 'MEDIUM',
+                    predExtreme: p.ai_extreme_group || 'MEDIUM',
+                    predLowMid: p.ai_low_mid_group || 'MEDIUM',
+                    predMidHigh: p.ai_mid_high_group || 'MEDIUM',
+                    ensemble: p.ensemble_group || 'MEDIUM',
+                    correctStick: p.correct_stick === 1,
+                    correctExtreme: p.correct_extreme === 1,
+                    correctLowMid: p.correct_low_mid === 1,
+                    correctMidHigh: p.correct_mid_high === 1,
+                    correctEnsemble: p.correct_ensemble === 1,
+                    timestamp: new Date(p.prediction_timestamp),
+                    isPending: p.actual_group === null
+                }));
+                resolve(transformed);
+            }
+        });
+    });
+}
+
+function getStatsData() {
+    return new Promise((resolve) => {
+        db.get(`SELECT 
+                    COUNT(*) as totalRounds,
+                    COALESCE(AVG(total), 0) as avgResult,
+                    (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as mostActiveGroup
+                FROM results`, (err, stats) => {
+            if (err) resolve({ totalRounds: 0, avgResult: 0, mostActiveGroup: 'LOW', lightningBoost: 0 });
+            else {
+                db.get(`SELECT COUNT(*) as lightningCount FROM results WHERE multiplier > 10`, (err, lightning) => {
+                    db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
+                        const lightningPercent = total && total.total > 0 ? (lightning?.lightningCount || 0) / total.total * 100 : 0;
+                        resolve({
+                            totalRounds: stats?.totalRounds || 0,
+                            avgResult: stats?.avgResult ? stats.avgResult.toFixed(2) : 0,
+                            mostActiveGroup: stats?.mostActiveGroup || 'LOW',
+                            lightningBoost: Math.round(lightningPercent)
+                        });
+                    });
+                });
+            }
+        });
+    });
+}
+
+function getAIStatsData() {
+    return new Promise((resolve) => {
+        db.all(`SELECT ai_name, accuracy, total_predictions, correct_predictions FROM ai_stats`, (err, rows) => {
+            if (err) resolve([]);
+            else resolve(rows || []);
+        });
+    });
+}
+
+function getPreviousResultsForPrediction(limit = 5) {
+    return new Promise((resolve) => {
+        db.all(`SELECT group_name as group FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
+            if (err || !results) resolve([]);
+            else resolve(results || []);
+        });
+    });
+}
+
+async function getCurrentPredictionData() {
+    const previousResults = await getPreviousResultsForPrediction(5);
+    if (previousResults.length < 2) {
+        return {
+            stick: 'MEDIUM',
+            extreme: 'MEDIUM',
+            lowMid: 'MEDIUM',
+            midHigh: 'MEDIUM',
+            ensemble: 'MEDIUM',
+            stickConfidence: 50,
+            extremeConfidence: 50,
+            lowMidConfidence: 50,
+            midHighConfidence: 50,
+            ensembleConfidence: 50,
+            agreement: 0
+        };
+    }
+    
+    const currentGroup = previousResults[0]?.group || 'MEDIUM';
+    const previousGroup = previousResults[1]?.group || 'MEDIUM';
+    
+    const predStick = serverAI.stick.predict(currentGroup, previousGroup);
+    const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
+    const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
+    const predMidHigh = serverAI.midHigh.predict(currentGroup, previousGroup);
+    
+    let stickGroup = currentGroup;
+    if (predStick.prediction === "STICK") {
+        stickGroup = predStick.nextGroup || currentGroup;
+    } else if (predStick.prediction === "SWITCH") {
+        stickGroup = predStick.nextGroup || 'MEDIUM';
+    }
+    
+    let extremeGroup = 'MEDIUM';
+    if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
+        const parts = predExtreme.pattern.split("→");
+        extremeGroup = parts[1]?.trim() || 'MEDIUM';
+    } else if (predExtreme.prediction === "BREAK") {
+        extremeGroup = predExtreme.nextGroup || 'MEDIUM';
+    }
+    
+    let lowMidGroup = 'MEDIUM';
+    if (predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
+        const parts = predLowMid.pattern.split("→");
+        lowMidGroup = parts[1]?.trim() || 'MEDIUM';
+    } else if (predLowMid.prediction === "BREAK") {
+        lowMidGroup = predLowMid.nextGroup || 'MEDIUM';
+    }
+    
+    let midHighGroup = 'MEDIUM';
+    if (predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
+        const parts = predMidHigh.pattern.split("→");
+        midHighGroup = parts[1]?.trim() || 'MEDIUM';
+    } else if (predMidHigh.prediction === "BREAK") {
+        midHighGroup = predMidHigh.nextGroup || 'MEDIUM';
+    }
+    
+    const ensembleResult = serverAI.ensemble.combine(predStick, predExtreme, predLowMid, predMidHigh);
+    const ensembleGroup = ensembleResult.final.group;
+    
+    return {
+        stick: stickGroup,
+        extreme: extremeGroup,
+        lowMid: lowMidGroup,
+        midHigh: midHighGroup,
+        ensemble: ensembleGroup,
+        stickConfidence: predStick.confidence || 65,
+        extremeConfidence: predExtreme.confidence || 65,
+        lowMidConfidence: predLowMid.confidence || 65,
+        midHighConfidence: predMidHigh.confidence || 65,
+        ensembleConfidence: ensembleResult.final.confidence,
+        agreement: ensembleResult.final.agreement
+    };
+}
+
+// ============ PREDICTION FUNCTIONS ============
+
 async function savePredictionOnly(resultId, previousResults) {
     if (!previousResults || previousResults.length < 2) {
         console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history`);
         return null;
     }
     
-    // Get AI predictions
-    const prediction = makePrediction(previousResults);
+    const prediction = await getCurrentPredictionData();
     
     console.log(`\n📝 SAVING PREDICTION ONLY (before result) for ${resultId}:`);
     console.log(`   AI-A (Stick): ${prediction.stick}`);
@@ -269,7 +433,6 @@ async function savePredictionOnly(resultId, previousResults) {
     console.log(`   AI-D (MidHigh): ${prediction.midHigh}`);
     console.log(`   ENSEMBLE: ${prediction.ensemble}`);
     
-    // Check if prediction already exists
     const existing = await new Promise((resolve) => {
         db.get(`SELECT id FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
             resolve(row);
@@ -277,7 +440,6 @@ async function savePredictionOnly(resultId, previousResults) {
     });
     
     if (existing) {
-        console.log(`⚠️ Prediction for ${resultId} already exists, updating...`);
         return new Promise((resolve) => {
             db.run(`UPDATE predictions SET 
                     ai_stick_group = ?,
@@ -322,12 +484,10 @@ async function savePredictionOnly(resultId, previousResults) {
     }
 }
 
-// ============ NEW: Update prediction with actual result ============
 async function updatePredictionWithResult(resultId, actualGroup) {
     console.log(`\n📊 UPDATING PREDICTION with result for ${resultId}:`);
     console.log(`   ACTUAL RESULT: ${actualGroup}`);
     
-    // Get the saved prediction
     const prediction = await new Promise((resolve) => {
         db.get(`SELECT ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group 
                 FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
@@ -340,7 +500,6 @@ async function updatePredictionWithResult(resultId, actualGroup) {
         return null;
     }
     
-    // Calculate correctness
     const correct = {
         stick: prediction.ai_stick_group === actualGroup ? 1 : 0,
         extreme: prediction.ai_extreme_group === actualGroup ? 1 : 0,
@@ -356,7 +515,6 @@ async function updatePredictionWithResult(resultId, actualGroup) {
     console.log(`   AI-D: ${prediction.ai_mid_high_group} → ${correct.mid_high ? '✓' : '✗'}`);
     console.log(`   ENSEMBLE: ${prediction.ensemble_group} → ${correct.ensemble ? '✓' : '✗'}`);
     
-    // Update the prediction record with actual result and correctness
     return new Promise((resolve) => {
         db.run(`UPDATE predictions SET
                 actual_group = ?,
@@ -373,8 +531,6 @@ async function updatePredictionWithResult(resultId, actualGroup) {
                     console.error('Error updating prediction with result:', err);
                 } else {
                     console.log(`✅ Prediction UPDATED with result for ${resultId}`);
-                    
-                    // Update AI stats
                     await updateAIStatsTable('AI_Stick', correct.stick === 1);
                     await updateAIStatsTable('AI_ExtremeSwitch', correct.extreme === 1);
                     await updateAIStatsTable('AI_LowMidSwitch', correct.low_mid === 1);
@@ -385,70 +541,6 @@ async function updatePredictionWithResult(resultId, actualGroup) {
             }
         );
     });
-}
-
-function makePrediction(previousResults) {
-    if (!previousResults || previousResults.length < 2) {
-        return {
-            stick: 'MEDIUM',
-            extreme: 'MEDIUM',
-            lowMid: 'MEDIUM',
-            midHigh: 'MEDIUM',
-            ensemble: 'MEDIUM'
-        };
-    }
-    
-    const currentGroup = previousResults[0]?.group || 'MEDIUM';
-    const previousGroup = previousResults[1]?.group || 'MEDIUM';
-    
-    // Get predictions from each AI
-    const predStick = serverAI.stick.predict(currentGroup, previousGroup);
-    const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
-    const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
-    const predMidHigh = serverAI.midHigh.predict(currentGroup, previousGroup);
-    
-    let stickGroup = currentGroup;
-    if (predStick.prediction === "STICK") {
-        stickGroup = predStick.nextGroup || currentGroup;
-    } else if (predStick.prediction === "SWITCH") {
-        stickGroup = predStick.nextGroup || 'MEDIUM';
-    }
-    
-    let extremeGroup = 'MEDIUM';
-    if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
-        const parts = predExtreme.pattern.split("→");
-        extremeGroup = parts[1]?.trim() || 'MEDIUM';
-    } else if (predExtreme.prediction === "BREAK") {
-        extremeGroup = predExtreme.nextGroup || 'MEDIUM';
-    }
-    
-    let lowMidGroup = 'MEDIUM';
-    if (predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
-        const parts = predLowMid.pattern.split("→");
-        lowMidGroup = parts[1]?.trim() || 'MEDIUM';
-    } else if (predLowMid.prediction === "BREAK") {
-        lowMidGroup = predLowMid.nextGroup || 'MEDIUM';
-    }
-    
-    let midHighGroup = 'MEDIUM';
-    if (predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
-        const parts = predMidHigh.pattern.split("→");
-        midHighGroup = parts[1]?.trim() || 'MEDIUM';
-    } else if (predMidHigh.prediction === "BREAK") {
-        midHighGroup = predMidHigh.nextGroup || 'MEDIUM';
-    }
-    
-    // Ensemble prediction
-    const ensembleResult = serverAI.ensemble.combine(predStick, predExtreme, predLowMid, predMidHigh);
-    const ensembleGroup = ensembleResult.final.group;
-    
-    return {
-        stick: stickGroup,
-        extreme: extremeGroup,
-        lowMid: lowMidGroup,
-        midHigh: midHighGroup,
-        ensemble: ensembleGroup,
-    };
 }
 
 async function updateAIStatsTable(aiName, correct) {
@@ -467,19 +559,81 @@ async function updateAIStatsTable(aiName, correct) {
     });
 }
 
-async function getPreviousResults(limit = 5) {
-    return new Promise((resolve) => {
-        db.all(`SELECT group_name FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
-            if (err || !results) resolve([]);
-            else resolve(results.map(r => ({ group: r.group_name })));
-        });
+// ============ BROADCAST FUNCTIONS ============
+
+async function broadcastFullDataOnNewResult(gameResult, predictionData) {
+    const [results, predictions, stats, aiStats] = await Promise.all([
+        getResultsData(100),
+        getPredictionsData(500),
+        getStatsData(),
+        getAIStatsData()
+    ]);
+    
+    const message = JSON.stringify({
+        type: 'new_result',
+        result: {
+            id: gameResult.id,
+            total: gameResult.total,
+            group: gameResult.group_name,
+            multiplier: gameResult.multiplier,
+            diceValues: gameResult.dice_values,
+            timestamp: gameResult.timestamp
+        },
+        prediction: predictionData,
+        history: predictions,
+        stats: stats,
+        aiStats: aiStats
+    });
+    
+    clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
     });
 }
 
-// Background data collection service
+// ============ DATA COLLECTION ============
+
 let lastGameId = null;
 let isCollecting = false;
-let pendingPredictions = new Set(); // Track which IDs we've saved prediction for
+let pendingPredictions = new Set();
+
+function getGroup(number) {
+    if (number >= 3 && number <= 9) return 'LOW';
+    if (number >= 10 && number <= 11) return 'MEDIUM';
+    if (number >= 12 && number <= 18) return 'HIGH';
+    return 'UNKNOWN';
+}
+
+async function saveGameResult(game) {
+    const total = game.result.total;
+    const group = getGroup(total);
+    const multipliers = game.result.luckyNumbersList || [];
+    const multiplierItem = multipliers.find(m => m.outcome === `LightningDice_Total${total}`);
+    const diceValues = game.result.value || '⚀ ⚀ ⚀';
+    
+    const result = {
+        id: game.id,
+        total: total,
+        group_name: group,
+        multiplier: multiplierItem ? multiplierItem.multiplier : 1,
+        dice_values: diceValues,
+        timestamp: new Date(game.settledAt).toISOString(),
+        winners: game.totalWinners || 0,
+        payout: game.totalAmount || 0
+    };
+    
+    return new Promise((resolve, reject) => {
+        db.run(`INSERT OR REPLACE INTO results (id, total, group_name, multiplier, dice_values, timestamp, winners, payout)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [result.id, result.total, result.group_name, result.multiplier, result.dice_values, result.timestamp, result.winners, result.payout],
+            (err) => {
+                if (err) reject(err);
+                else resolve(result);
+            }
+        );
+    });
+}
 
 async function collectData() {
     if (isCollecting) return;
@@ -508,29 +662,24 @@ async function collectData() {
                 });
                 
                 if (!exists) {
-                    // STEP 1: Save prediction FIRST (before result)
-                    const previousResults = await getPreviousResults(5);
+                    const previousResults = await getPreviousResultsForPrediction(5);
                     
                     if (previousResults.length >= 2 && !pendingPredictions.has(gameId)) {
                         pendingPredictions.add(gameId);
                         await savePredictionOnly(gameId, previousResults);
                         
-                        // Broadcast prediction update to show pending status
                         broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
                     }
                     
-                    // STEP 2: Save the actual result
-                    await saveGameResult(game);
+                    const savedResult = await saveGameResult(game);
                     
-                    // STEP 3: Update prediction with actual result
                     const totalResult = game.result.total;
                     const group = getGroup(totalResult);
                     await updatePredictionWithResult(gameId, group);
                     
                     pendingPredictions.delete(gameId);
                     
-                    // STEP 4: Update AI models with actual result (for future predictions)
-                    const previousGroups = await getPreviousResults(3);
+                    const previousGroups = await getPreviousResultsForPrediction(3);
                     const currentGroup = previousGroups[0]?.group || group;
                     const previousGroup = previousGroups[1]?.group || currentGroup;
                     
@@ -544,6 +693,9 @@ async function collectData() {
                     await saveServerAIState('AI_LowMidSwitch');
                     await saveServerAIState('AI_MidHighSwitch');
                     
+                    const predictionData = await getCurrentPredictionData();
+                    await broadcastFullDataOnNewResult(savedResult, predictionData);
+                    
                     console.log(`✅ Complete flow done for game: ${gameId}`);
                 }
             }
@@ -555,49 +707,33 @@ async function collectData() {
     isCollecting = false;
 }
 
-async function saveGameResult(game) {
-    const total = game.result.total;
-    const group = getGroup(total);
-    const multipliers = game.result.luckyNumbersList || [];
-    const multiplierItem = multipliers.find(m => m.outcome === `LightningDice_Total${total}`);
-    const diceValues = game.result.value || '⚀ ⚀ ⚀';
-    
-    const result = {
-        id: game.id,
-        total: total,
-        group_name: group,
-        multiplier: multiplierItem ? multiplierItem.multiplier : 1,
-        dice_values: diceValues,
-        timestamp: new Date(game.settledAt).toISOString(),
-        winners: game.totalWinners || 0,
-        payout: game.totalAmount || 0
-    };
-    
-    return new Promise((resolve, reject) => {
-        db.run(`INSERT OR REPLACE INTO results (id, total, group_name, multiplier, dice_values, timestamp, winners, payout)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [result.id, result.total, result.group_name, result.multiplier, result.dice_values, result.timestamp, result.winners, result.payout],
-            (err) => {
-                if (err) reject(err);
-                else {
-                    broadcast({ type: 'new_result', data: result });
-                    resolve();
-                }
-            }
-        );
-    });
-}
-
-function getGroup(number) {
-    if (number >= 3 && number <= 9) return 'LOW';
-    if (number >= 10 && number <= 11) return 'MEDIUM';
-    if (number >= 12 && number <= 18) return 'HIGH';
-    return 'UNKNOWN';
-}
-
 // ============ API ENDPOINTS ============
 
-// UPDATED: Get predictions with pending status support
+// NEW: Single endpoint for all data
+app.get('/api/all-data', async (req, res) => {
+    try {
+        const [results, predictions, stats, aiStats, currentPrediction] = await Promise.all([
+            getResultsData(100),
+            getPredictionsData(500),
+            getStatsData(),
+            getAIStatsData(),
+            getCurrentPredictionData()
+        ]);
+        
+        res.json({
+            success: true,
+            results: results,
+            predictions: predictions,
+            stats: stats,
+            aiStats: aiStats,
+            currentPrediction: currentPrediction
+        });
+    } catch (error) {
+        console.error('Error loading all data:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/predictions', (req, res) => {
     const limit = parseInt(req.query.limit) || 500;
     
@@ -610,7 +746,6 @@ app.get('/api/predictions', (req, res) => {
             return;
         }
         
-        // Transform data for frontend
         const transformed = predictions.map(p => ({
             result_id: p.result_id,
             total: p.total || null,
@@ -685,26 +820,6 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
-app.get('/api/group-distribution', (req, res) => {
-    db.all(`SELECT group_name, COUNT(*) as count FROM results GROUP BY group_name`, (err, groups) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        
-        const total = groups.reduce((sum, g) => sum + g.count, 0);
-        const distribution = {};
-        groups.forEach(g => {
-            distribution[g.group_name] = {
-                count: g.count,
-                percentage: total > 0 ? (g.count / total) * 100 : 0
-            };
-        });
-        
-        res.json(distribution);
-    });
-});
-
 app.get('/api/ai-stats', (req, res) => {
     db.all(`SELECT * FROM ai_stats`, (err, stats) => {
         if (err) {
@@ -715,34 +830,12 @@ app.get('/api/ai-stats', (req, res) => {
     });
 });
 
-app.get('/api/latest', (req, res) => {
-    db.get(`SELECT * FROM results ORDER BY timestamp DESC LIMIT 1`, (err, result) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(result || {});
-    });
-});
-
 app.get('/api/current-prediction', async (req, res) => {
-    const previousResults = await getPreviousResults(5);
-    if (previousResults.length < 2) {
-        res.json({ error: 'Not enough data for prediction', prediction: null });
-        return;
-    }
-    
-    const prediction = makePrediction(previousResults);
+    const prediction = await getCurrentPredictionData();
     res.json({
         success: true,
-        prediction: prediction,
-        basedOnResults: previousResults.map(r => r.group)
+        prediction: prediction
     });
-});
-
-app.post('/api/retrain-all', async (req, res) => {
-    await trainAllServerAIs();
-    res.json({ success: true, message: 'All AI models retrained successfully' });
 });
 
 app.get('/api/server-ai-stats', (req, res) => {
@@ -755,49 +848,12 @@ app.get('/api/server-ai-stats', (req, res) => {
     });
 });
 
-app.get('/api/load-pattern/:ai_name', (req, res) => {
-    db.all(`SELECT pattern_key, streak_value, max_streak, break_data FROM pattern_data WHERE ai_name = ?`, 
-        [req.params.ai_name], (err, patterns) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        
-        const result = {};
-        patterns.forEach(p => {
-            result[p.pattern_key] = {
-                streak_value: p.streak_value,
-                max_streak: p.max_streak,
-                break_data: JSON.parse(p.break_data)
-            };
-        });
-        res.json(result);
-    });
-});
-
-app.post('/api/save-pattern', (req, res) => {
-    const { ai_name, pattern_key, streak_value, max_streak, break_data } = req.body;
-    
-    db.run(`INSERT OR REPLACE INTO pattern_data (ai_name, pattern_key, streak_value, max_streak, break_data, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)`,
-        [ai_name, pattern_key, streak_value, max_streak, JSON.stringify(break_data), new Date().toISOString()],
-        (err) => {
-            if (err) {
-                res.status(500).json({ error: err.message });
-                return;
-            }
-            res.json({ success: true });
-        });
-});
-
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
         clients: clients.size,
-        uptime: process.uptime(),
-        nodeVersion: process.version,
-        environment: process.env.NODE_ENV || 'production'
+        uptime: process.uptime()
     });
 });
 
