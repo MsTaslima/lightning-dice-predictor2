@@ -1,5 +1,5 @@
 // ============================================================
-// COMPLETE server.js (FULLY FIXED - Database Read/Write Working)
+// COMPLETE server.js (FULLY FIXED - All issues resolved)
 // ============================================================
 
 // Fix memory leak warnings
@@ -267,12 +267,18 @@ async function trainAllServerAIs() {
 
 // ============ DATA RETRIEVAL HELPER FUNCTIONS ============
 
+// FIXED: getResultsData - properly returns data
 function getResultsData(limit = 100) {
     return new Promise((resolve) => {
         db.all(`SELECT id, total, group_name as group, multiplier, dice_values as diceValues, timestamp 
                 FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, rows) => {
-            if (err) resolve([]);
-            else resolve(rows || []);
+            if (err) {
+                console.error('Error in getResultsData:', err);
+                resolve([]);
+            } else {
+                console.log(`✅ getResultsData returning ${rows?.length || 0} results`);
+                resolve(rows || []);
+            }
         });
     });
 }
@@ -283,8 +289,10 @@ function getPredictionsData(limit = 500) {
                 FROM predictions p
                 LEFT JOIN results r ON p.result_id = r.id
                 ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, rows) => {
-            if (err) resolve([]);
-            else {
+            if (err) {
+                console.error('Error in getPredictionsData:', err);
+                resolve([]);
+            } else {
                 const transformed = (rows || []).map(p => ({
                     id: p.result_id,
                     time: p.prediction_timestamp ? new Date(p.prediction_timestamp).toLocaleTimeString() : '--',
@@ -317,8 +325,10 @@ function getStatsData() {
                     COALESCE(AVG(total), 0) as avgResult,
                     (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as mostActiveGroup
                 FROM results`, (err, stats) => {
-            if (err) resolve({ totalRounds: 0, avgResult: 0, mostActiveGroup: 'LOW', lightningBoost: 0 });
-            else {
+            if (err) {
+                console.error('Error in getStatsData:', err);
+                resolve({ totalRounds: 0, avgResult: 0, mostActiveGroup: 'LOW', lightningBoost: 0 });
+            } else {
                 db.get(`SELECT COUNT(*) as lightningCount FROM results WHERE multiplier > 10`, (err, lightning) => {
                     db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
                         const lightningPercent = total && total.total > 0 ? (lightning?.lightningCount || 0) / total.total * 100 : 0;
@@ -338,15 +348,17 @@ function getStatsData() {
 function getAIStatsData() {
     return new Promise((resolve) => {
         db.all(`SELECT ai_name, accuracy, total_predictions, correct_predictions FROM ai_stats`, (err, rows) => {
-            if (err) resolve([]);
-            else resolve(rows || []);
+            if (err) {
+                console.error('Error in getAIStatsData:', err);
+                resolve([]);
+            } else {
+                resolve(rows || []);
+            }
         });
     });
 }
 
-// FIXED: This function now properly returns data
-// শুধুমাত্র এই ফাংশনগুলি Replace করুন - বাকি কোড আগের মতো থাকবে
-
+// FIXED: getPreviousResultsForPrediction - uses group_name
 function getPreviousResultsForPrediction(limit = 5) {
     return new Promise((resolve) => {
         db.all(`SELECT group_name as group_value, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
@@ -391,7 +403,6 @@ async function getCurrentPredictionData() {
     
     console.log(`🔮 Making prediction with current: ${currentGroup}, previous: ${previousGroup}`);
     
-    // Rest of the function remains the same...
     const predStick = serverAI.stick.predict(currentGroup, previousGroup);
     const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
     const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
@@ -445,6 +456,7 @@ async function getCurrentPredictionData() {
         agreement: ensembleResult.final.agreement
     };
 }
+
 // ============ PREDICTION FUNCTIONS ============
 
 async function savePredictionOnly(resultId, previousResults) {
@@ -454,6 +466,8 @@ async function savePredictionOnly(resultId, previousResults) {
     }
     
     console.log(`🔮 Generating prediction for ${resultId}...`);
+    console.log(`   History: ${previousResults.map(r => r.group).join(' → ')}`);
+    
     const prediction = await getCurrentPredictionData();
     
     console.log(`\n📝 SAVING PREDICTION for ${resultId}:`);
@@ -465,11 +479,17 @@ async function savePredictionOnly(resultId, previousResults) {
     
     const existing = await new Promise((resolve) => {
         db.get(`SELECT id FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
-            resolve(row);
+            if (err) {
+                console.error('Error checking existing prediction:', err);
+                resolve(null);
+            } else {
+                resolve(row);
+            }
         });
     });
     
     if (existing) {
+        console.log(`⚠️ Prediction for ${resultId} already exists, updating...`);
         return new Promise((resolve) => {
             db.run(`UPDATE predictions SET 
                     ai_stick_group = ?,
@@ -493,7 +513,7 @@ async function savePredictionOnly(resultId, previousResults) {
         });
     } else {
         return new Promise((resolve) => {
-            db.run(`INSERT INTO predictions (
+            const stmt = db.prepare(`INSERT INTO predictions (
                     result_id,
                     ai_stick_group,
                     ai_extreme_group,
@@ -506,18 +526,18 @@ async function savePredictionOnly(resultId, previousResults) {
                     correct_low_mid,
                     correct_mid_high,
                     correct_ensemble
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, -1, -1)`,
-                [resultId, prediction.stick, prediction.extreme, prediction.lowMid, prediction.midHigh, prediction.ensemble, new Date().toISOString()],
-                (err) => {
-                    if (err) {
-                        console.error('Error saving prediction:', err);
-                        resolve(null);
-                    } else {
-                        console.log(`✅ Prediction INSERTED for ${resultId}`);
-                        resolve(prediction);
-                    }
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, -1, -1)`);
+            
+            stmt.run([resultId, prediction.stick, prediction.extreme, prediction.lowMid, prediction.midHigh, prediction.ensemble, new Date().toISOString()], (err) => {
+                if (err) {
+                    console.error('Error saving prediction:', err);
+                    resolve(null);
+                } else {
+                    console.log(`✅ Prediction INSERTED for ${resultId}`);
+                    resolve(prediction);
                 }
-            );
+            });
+            stmt.finalize();
         });
     }
 }
@@ -529,7 +549,12 @@ async function updatePredictionWithResult(resultId, actualGroup) {
     const prediction = await new Promise((resolve) => {
         db.get(`SELECT ai_stick_group, ai_extreme_group, ai_low_mid_group, ai_mid_high_group, ensemble_group 
                 FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
-            resolve(row);
+            if (err) {
+                console.error('Error fetching prediction:', err);
+                resolve(null);
+            } else {
+                resolve(row);
+            }
         });
     });
     
@@ -599,6 +624,7 @@ async function updateAIStatsTable(aiName, correct) {
 
 // ============ BROADCAST FUNCTIONS ============
 
+// FIXED: broadcastFullDataOnNewResult - includes allResults
 async function broadcastFullDataOnNewResult(gameResult, predictionData) {
     console.log(`📡 Preparing broadcast for ${clients.size} clients...`);
     
@@ -625,7 +651,7 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
         history: predictions,
         stats: stats,
         aiStats: aiStats,
-        allResults: results  // FIX: Add this for Recent Results
+        allResults: results
     });
     
     let sentCount = 0;
@@ -637,6 +663,7 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
     });
     console.log(`✅ Broadcast sent to ${sentCount} clients`);
 }
+
 // ============ DATA COLLECTION ============
 
 let lastGameId = null;
@@ -650,7 +677,6 @@ function getGroup(number) {
     return 'UNKNOWN';
 }
 
-// FIXED: saveGameResult with proper callback
 async function saveGameResult(game) {
     const total = game.result.total;
     const group = getGroup(total);
@@ -686,7 +712,6 @@ async function saveGameResult(game) {
     });
 }
 
-// FIXED: collectData with proper history checking
 async function collectData() {
     if (isCollecting) return;
     isCollecting = true;
@@ -716,13 +741,11 @@ async function collectData() {
                 if (!exists) {
                     console.log(`🆕 New game detected: ${gameId}`);
                     
-                    // Get previous results FIRST
                     const previousResults = await getPreviousResultsForPrediction(10);
                     console.log(`📜 History length for prediction: ${previousResults.length}`);
                     
                     let predictionData = null;
                     
-                    // Save prediction BEFORE result if we have history
                     if (previousResults.length >= 2) {
                         pendingPredictions.add(gameId);
                         console.log(`🔮 Saving prediction FIRST for ${gameId}...`);
@@ -730,15 +753,15 @@ async function collectData() {
                         if (predictionData) {
                             broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
                             console.log(`✅ Prediction SAVED before result for ${gameId}`);
+                        } else {
+                            console.log(`❌ Prediction SAVE FAILED for ${gameId}`);
                         }
                     } else {
                         console.log(`⚠️ Cannot save prediction: need 2+ history, got ${previousResults.length}`);
                     }
                     
-                    // Save result
                     const savedResult = await saveGameResult(game);
                     
-                    // Update prediction with actual result
                     const totalResult = game.result.total;
                     const group = getGroup(totalResult);
                     
@@ -746,7 +769,6 @@ async function collectData() {
                     
                     pendingPredictions.delete(gameId);
                     
-                    // Update AI models
                     const updatedHistory = await getPreviousResultsForPrediction(3);
                     const currentGroup = updatedHistory[0]?.group || group;
                     const previousGroup = updatedHistory[1]?.group || currentGroup;
@@ -775,7 +797,6 @@ async function collectData() {
     isCollecting = false;
 }
 
-// Database diagnostic on startup
 async function checkDatabaseOnStartup() {
     console.log('\n🔍 STARTUP DATABASE CHECK:');
     const resultCount = await new Promise((resolve) => {
@@ -798,7 +819,6 @@ async function checkDatabaseOnStartup() {
 
 // ============ API ENDPOINTS ============
 
-// Main endpoint for all data
 app.get('/api/all-data', async (req, res) => {
     try {
         const [results, predictions, stats, aiStats, currentPrediction] = await Promise.all([
@@ -946,7 +966,6 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Diagnostic endpoint
 app.get('/api/diagnostic', async (req, res) => {
     try {
         const resultsCount = await new Promise((resolve) => {
