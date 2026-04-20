@@ -345,18 +345,23 @@ function getAIStatsData() {
 }
 
 // FIXED: This function now properly returns data
+// শুধুমাত্র এই ফাংশনগুলি Replace করুন - বাকি কোড আগের মতো থাকবে
+
 function getPreviousResultsForPrediction(limit = 5) {
     return new Promise((resolve) => {
-        db.all(`SELECT group_name as group, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
+        db.all(`SELECT group_name as group_value, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
             if (err) {
                 console.error('Error getting previous results:', err);
                 resolve([]);
             } else {
                 console.log(`📊 getPreviousResultsForPrediction returned ${results?.length || 0} results`);
                 if (results && results.length > 0) {
-                    console.log(`   Last groups: ${results.map(r => r.group).join(', ')}`);
+                    console.log(`   Last groups: ${results.map(r => r.group_value).join(', ')}`);
+                    const formatted = results.map(r => ({ group: r.group_value, id: r.id, timestamp: r.timestamp }));
+                    resolve(formatted);
+                } else {
+                    resolve([]);
                 }
-                resolve(results || []);
             }
         });
     });
@@ -386,6 +391,7 @@ async function getCurrentPredictionData() {
     
     console.log(`🔮 Making prediction with current: ${currentGroup}, previous: ${previousGroup}`);
     
+    // Rest of the function remains the same...
     const predStick = serverAI.stick.predict(currentGroup, previousGroup);
     const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
     const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
@@ -439,7 +445,6 @@ async function getCurrentPredictionData() {
         agreement: ensembleResult.final.agreement
     };
 }
-
 // ============ PREDICTION FUNCTIONS ============
 
 async function savePredictionOnly(resultId, previousResults) {
