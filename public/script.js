@@ -108,68 +108,81 @@ class LightningDiceApp {
         connect();
     }
     
-    handleRealtimeUpdate(data) {
-        // Add new result to the beginning of allResults array
-        if (data.result) {
-            this.allResults.unshift(data.result);
-            // Keep only last 100 results to prevent memory issues
-            if (this.allResults.length > 100) this.allResults.pop();
-            
-            // Immediately update Recent Results display
-            this.updateRecentResultsDisplay();
-        }
-        
-        // Add new prediction to history
-        if (data.prediction && data.result) {
-            const newPrediction = {
-                id: data.result.id,
-                time: new Date().toLocaleTimeString(),
-                dice: data.result.diceValues || '--',
-                total: data.result.total,
-                actualGroup: data.result.group,
-                predStick: data.prediction.stick || 'MEDIUM',
-                predExtreme: data.prediction.extreme || 'MEDIUM',
-                predLowMid: data.prediction.lowMid || 'MEDIUM',
-                predMidHigh: data.prediction.midHigh || 'MEDIUM',
-                ensemble: data.prediction.ensemble || 'MEDIUM',
-                correctStick: data.prediction.correctStick || false,
-                correctExtreme: data.prediction.correctExtreme || false,
-                correctLowMid: data.prediction.correctLowMid || false,
-                correctMidHigh: data.prediction.correctMidHigh || false,
-                correctEnsemble: data.prediction.correctEnsemble || false,
-                timestamp: new Date(),
-                isPending: false
-            };
-            this.predictionHistory.unshift(newPrediction);
-            // Keep only last 1000 predictions
-            if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
-            
-            // Re-render history table
-            this.renderHistoryTable();
-        }
-        
-        // Update predictions history if provided
-        if (data.history) {
-            this.predictionHistory = data.history;
-            this.renderHistoryTable();
-        }
-        
-        // Update current prediction display
-        if (data.prediction) {
-            this.currentPrediction = data.prediction;
-            this.displayServerPrediction(data.prediction);
-        }
-        
-        // Update all UI components
-        if (data.stats) this.updateStatsDisplay(data.stats);
-        if (data.aiStats) this.updateAIDisplay(data.aiStats);
-        
-        // Update other displays
-        this.updateGroupProbabilities();
+  handleRealtimeUpdate(data) {
+    console.log('📨 Processing realtime update:', data.type);
+    
+    // FIX 1: Check for allResults in the message (for Recent Results & Number Statistics)
+    if (data.allResults) {
+        this.allResults = data.allResults;
+        console.log(`📊 Updated allResults with ${this.allResults.length} entries`);
+        this.updateRecentResultsDisplay();
         this.updateStatisticsTable();
-        
-        this.animateNewResult();
+        this.updateGroupProbabilities();
     }
+    
+    // Add new result to the beginning of allResults array
+    if (data.result) {
+        this.allResults.unshift(data.result);
+        // Keep only last 100 results to prevent memory issues
+        if (this.allResults.length > 100) this.allResults.pop();
+        
+        // Immediately update Recent Results display
+        this.updateRecentResultsDisplay();
+        this.updateStatisticsTable();
+        this.updateGroupProbabilities();
+    }
+    
+    // Add new prediction to history
+    if (data.prediction && data.result) {
+        const newPrediction = {
+            id: data.result.id,
+            time: new Date().toLocaleTimeString(),
+            dice: data.result.diceValues || '--',
+            total: data.result.total,
+            actualGroup: data.result.group,
+            predStick: data.prediction.stick || 'MEDIUM',
+            predExtreme: data.prediction.extreme || 'MEDIUM',
+            predLowMid: data.prediction.lowMid || 'MEDIUM',
+            predMidHigh: data.prediction.midHigh || 'MEDIUM',
+            ensemble: data.prediction.ensemble || 'MEDIUM',
+            correctStick: data.prediction.correctStick || false,
+            correctExtreme: data.prediction.correctExtreme || false,
+            correctLowMid: data.prediction.correctLowMid || false,
+            correctMidHigh: data.prediction.correctMidHigh || false,
+            correctEnsemble: data.prediction.correctEnsemble || false,
+            timestamp: new Date(),
+            isPending: false
+        };
+        this.predictionHistory.unshift(newPrediction);
+        // Keep only last 1000 predictions
+        if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
+        
+        // Re-render history table
+        this.renderHistoryTable();
+    }
+    
+    // Update predictions history if provided
+    if (data.history) {
+        this.predictionHistory = data.history;
+        this.renderHistoryTable();
+    }
+    
+    // Update current prediction display
+    if (data.prediction) {
+        this.currentPrediction = data.prediction;
+        this.displayServerPrediction(data.prediction);
+    }
+    
+    // Update all UI components
+    if (data.stats) this.updateStatsDisplay(data.stats);
+    if (data.aiStats) this.updateAIDisplay(data.aiStats);
+    
+    // Update other displays
+    this.updateGroupProbabilities();
+    this.updateStatisticsTable();
+    
+    this.animateNewResult();
+}
     
     updatePendingStatus(data) {
         const pendingPrediction = this.predictionHistory.find(p => p.id === data.result_id);
