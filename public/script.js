@@ -1,21 +1,17 @@
-// script.js (UPDATED - Supports pending status)
+// script.js (COMPLETE - Server Only Version)
+// No client AI references - only fetches from server API
 
 class LightningDiceApp {
     constructor() {
         this.apiBase = '/api';
         this.ws = null;
         this.allResults = [];
-        this.lastGameId = null;
-        this.autoRefreshInterval = null;
-        this.timerInterval = null;
-        this.refreshSeconds = 3;
-        this.isInitialized = false;
-        
-        this.predictionsMap = new Map();
         this.predictionHistory = [];
         this.currentPage = 1;
         this.itemsPerPage = 10;
-        this.maxHistorySize = 1000;
+        this.autoRefreshInterval = null;
+        this.timerInterval = null;
+        this.refreshSeconds = 3;
         
         this.groups = {
             LOW: { name: 'LOW', range: '3-9', numbers: [3,4,5,6,7,8,9], icon: '🔴' },
@@ -27,22 +23,15 @@ class LightningDiceApp {
     }
     
     async init() {
-        console.log('🚀 Initializing Four AI Pattern System (Prediction First Mode)...');
+        console.log('🚀 Initializing Server-Side AI Display System...');
         this.bindEvents();
         this.setupWebSocket();
         
         await this.loadStats();
         await this.loadResults();
         await this.loadPredictionsFromServer();
-        await this.loadAIStats();
-        await this.loadPatternsFromServer();
-        await this.loadCurrentPrediction();
+        await this.loadServerPrediction();
         
-        if (this.allResults.length >= 5) {
-            await this.trainAllModels();
-        }
-        
-        this.isInitialized = true;
         this.updateUI();
         this.startAutoRefresh();
         this.startTimer();
@@ -62,17 +51,16 @@ class LightningDiceApp {
                 console.log('🔌 WebSocket connected');
                 reconnectDelay = 1000;
                 this.updateConnectionStatus(true);
-                this.loadCurrentPrediction();
             };
             
             this.ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'new_result') {
-                    console.log('🆕 New result via WebSocket:', data.data);
-                    this.handleNewResult(data.data);
+                    console.log('🆕 New result via WebSocket');
+                    this.refreshData();
                 } else if (data.type === 'prediction_pending') {
-                    console.log('⏳ Prediction pending for:', data.data.result_id);
-                    this.loadPredictionsFromServer(); // Refresh to show pending status
+                    console.log('⏳ Prediction pending');
+                    this.loadServerPrediction();
                 }
             };
             
@@ -92,89 +80,117 @@ class LightningDiceApp {
         connect();
     }
     
-    async loadCurrentPrediction() {
+    async loadServerPrediction() {
         try {
             const response = await fetch(`${this.apiBase}/current-prediction`);
-            if (!response.ok) throw new Error('Failed to load current prediction');
+            if (!response.ok) throw new Error('Failed to load server prediction');
             const data = await response.json();
             
             if (data.success && data.prediction) {
                 this.displayServerPrediction(data.prediction);
             }
         } catch (error) {
-            console.error('Error loading current prediction:', error);
+            console.error('Error loading server prediction:', error);
         }
     }
     
     displayServerPrediction(prediction) {
-        const ensembleGroup = prediction.ensemble;
-        const stickGroup = prediction.stick;
-        const extremeGroup = prediction.extreme;
-        const lowMidGroup = prediction.lowMid;
-        const midHighGroup = prediction.midHigh;
-        
+        // AI-A (Stick)
         const stickPredEl = document.getElementById('aiStickPred');
+        const stickConfEl = document.getElementById('aiStickConf');
+        const stickAccEl = document.getElementById('aiStickAcc');
+        const stickInputEl = document.getElementById('aiStickInput');
+        
+        if (stickPredEl) stickPredEl.innerHTML = `${this.getGroupIcon(prediction.stick)} ${prediction.stick}`;
+        if (stickConfEl) stickConfEl.textContent = `${prediction.stickConfidence || 65}%`;
+        if (stickInputEl && this.allResults.length >= 2) {
+            stickInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
+        }
+        
+        // AI-B (Extreme Switch)
         const extremePredEl = document.getElementById('aiExtremePred');
+        const extremeConfEl = document.getElementById('aiExtremeConf');
+        const extremeAccEl = document.getElementById('aiExtremeAcc');
+        const extremeInputEl = document.getElementById('aiExtremeInput');
+        
+        if (extremePredEl) extremePredEl.innerHTML = `${this.getGroupIcon(prediction.extreme)} ${prediction.extreme}`;
+        if (extremeConfEl) extremeConfEl.textContent = `${prediction.extremeConfidence || 65}%`;
+        if (extremeInputEl && this.allResults.length >= 2) {
+            extremeInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
+        }
+        
+        // AI-C (Low-Mid Switch)
         const lowMidPredEl = document.getElementById('aiLowMidPred');
+        const lowMidConfEl = document.getElementById('aiLowMidConf');
+        const lowMidAccEl = document.getElementById('aiLowMidAcc');
+        const lowMidInputEl = document.getElementById('aiLowMidInput');
+        
+        if (lowMidPredEl) lowMidPredEl.innerHTML = `${this.getGroupIcon(prediction.lowMid)} ${prediction.lowMid}`;
+        if (lowMidConfEl) lowMidConfEl.textContent = `${prediction.lowMidConfidence || 65}%`;
+        if (lowMidInputEl && this.allResults.length >= 2) {
+            lowMidInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
+        }
+        
+        // AI-D (Mid-High Switch)
         const midHighPredEl = document.getElementById('aiMidHighPred');
+        const midHighConfEl = document.getElementById('aiMidHighConf');
+        const midHighAccEl = document.getElementById('aiMidHighAcc');
+        const midHighInputEl = document.getElementById('aiMidHighInput');
         
-        if (stickPredEl) stickPredEl.innerHTML = `${this.getGroupIcon(stickGroup)} ${stickGroup}`;
-        if (extremePredEl) extremePredEl.innerHTML = `${this.getGroupIcon(extremeGroup)} ${extremeGroup}`;
-        if (lowMidPredEl) lowMidPredEl.innerHTML = `${this.getGroupIcon(lowMidGroup)} ${lowMidGroup}`;
-        if (midHighPredEl) midHighPredEl.innerHTML = `${this.getGroupIcon(midHighGroup)} ${midHighGroup}`;
+        if (midHighPredEl) midHighPredEl.innerHTML = `${this.getGroupIcon(prediction.midHigh)} ${prediction.midHigh}`;
+        if (midHighConfEl) midHighConfEl.textContent = `${prediction.midHighConfidence || 65}%`;
+        if (midHighInputEl && this.allResults.length >= 2) {
+            midHighInputEl.textContent = `${this.allResults[1]?.group || '?'} → ${this.allResults[0]?.group || '?'}`;
+        }
         
+        // Ensemble
         const finalIcon = document.getElementById('finalIcon');
         const finalName = document.getElementById('finalName');
         const finalRange = document.getElementById('finalRange');
+        const confidenceFill = document.getElementById('confidenceFill');
+        const finalConfidence = document.getElementById('finalConfidence');
+        const finalExplanation = document.getElementById('finalExplanation');
+        const finalWeights = document.getElementById('finalWeights');
+        const voteCount = document.getElementById('voteCount');
+        
+        const ensembleGroup = prediction.ensemble;
+        const ensembleConfidence = prediction.ensembleConfidence || 70;
+        const agreement = prediction.agreement || 2;
         
         if (finalIcon) finalIcon.textContent = this.getGroupIcon(ensembleGroup);
         if (finalName) finalName.textContent = ensembleGroup;
         if (finalRange) finalRange.textContent = `(${this.getGroupRange(ensembleGroup)})`;
+        if (confidenceFill) confidenceFill.style.width = `${ensembleConfidence}%`;
+        if (finalConfidence) finalConfidence.textContent = `${ensembleConfidence}%`;
+        if (voteCount) voteCount.textContent = `(${agreement}/4 AI agree)`;
+        if (finalExplanation) finalExplanation.textContent = `Ensemble predicts ${ensembleGroup} with ${ensembleConfidence}% confidence based on weighted voting.`;
+        
+        // Load AI accuracies from server stats
+        this.loadAIStatsForDisplay();
     }
     
-    setupCollapsibleStats() {
-        const statsHeader = document.getElementById('statsHeader');
-        const statsContent = document.getElementById('statsContent');
-        const toggleIcon = document.getElementById('toggleIcon');
-        
-        if (statsHeader && statsContent && toggleIcon) {
-            statsHeader.addEventListener('click', () => {
-                const isVisible = statsContent.style.display !== 'none';
-                statsContent.style.display = isVisible ? 'none' : 'block';
-                toggleIcon.classList.toggle('open', !isVisible);
-            });
-        }
-    }
-    
-    bindEvents() {
-        const refreshBtn = document.getElementById('refreshBtn');
-        if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshData());
-        
-        const autoRefreshToggle = document.getElementById('autoRefreshToggle');
-        if (autoRefreshToggle) {
-            autoRefreshToggle.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    this.startAutoRefresh();
-                    this.startTimer();
-                } else {
-                    this.stopAutoRefresh();
-                    this.stopTimer();
-                }
-            });
-        }
-        
-        const prevBtn = document.getElementById('prevPageBtn');
-        const nextBtn = document.getElementById('nextPageBtn');
-        if (prevBtn) prevBtn.addEventListener('click', () => this.changePage(-1));
-        if (nextBtn) nextBtn.addEventListener('click', () => this.changePage(1));
-    }
-    
-    changePage(delta) {
-        const newPage = this.currentPage + delta;
-        const totalPages = Math.ceil(this.predictionHistory.length / this.itemsPerPage);
-        if (newPage >= 1 && newPage <= totalPages) {
-            this.currentPage = newPage;
-            this.renderHistoryTable();
+    async loadAIStatsForDisplay() {
+        try {
+            const response = await fetch(`${this.apiBase}/ai-stats`);
+            if (!response.ok) return;
+            const stats = await response.json();
+            
+            const stickAcc = stats.find(s => s.ai_name === 'AI_Stick')?.accuracy || 0;
+            const extremeAcc = stats.find(s => s.ai_name === 'AI_ExtremeSwitch')?.accuracy || 0;
+            const lowMidAcc = stats.find(s => s.ai_name === 'AI_LowMidSwitch')?.accuracy || 0;
+            const midHighAcc = stats.find(s => s.ai_name === 'AI_MidHighSwitch')?.accuracy || 0;
+            
+            const stickAccEl = document.getElementById('aiStickAcc');
+            const extremeAccEl = document.getElementById('aiExtremeAcc');
+            const lowMidAccEl = document.getElementById('aiLowMidAcc');
+            const midHighAccEl = document.getElementById('aiMidHighAcc');
+            
+            if (stickAccEl) stickAccEl.textContent = `${stickAcc.toFixed(1)}%`;
+            if (extremeAccEl) extremeAccEl.textContent = `${extremeAcc.toFixed(1)}%`;
+            if (lowMidAccEl) lowMidAccEl.textContent = `${lowMidAcc.toFixed(1)}%`;
+            if (midHighAccEl) midHighAccEl.textContent = `${midHighAcc.toFixed(1)}%`;
+        } catch (error) {
+            console.error('Error loading AI stats:', error);
         }
     }
     
@@ -210,19 +226,13 @@ class LightningDiceApp {
                 group: r.group_name,
                 multiplier: r.multiplier,
                 timestamp: new Date(r.timestamp),
-                diceValues: r.dice_values,
-                winners: r.winners,
-                payout: r.payout
+                diceValues: r.dice_values
             }));
             
             console.log(`✅ Loaded ${this.allResults.length} results from database`);
-            
-            if (this.allResults.length > 0) {
-                this.lastGameId = this.allResults[0].id;
-                this.updateRecentResultsDisplay();
-                this.updateStatisticsTable();
-                this.updateGroupProbabilities();
-            }
+            this.updateRecentResultsDisplay();
+            this.updateStatisticsTable();
+            this.updateGroupProbabilities();
         } catch (error) {
             console.error('Error loading results:', error);
         }
@@ -234,165 +244,32 @@ class LightningDiceApp {
             if (!response.ok) throw new Error('Failed to load predictions');
             const predictions = await response.json();
             
-            // Clear and reload (append only - but server now handles correctly)
-            this.predictionsMap.clear();
+            this.predictionHistory = predictions.map(p => ({
+                id: p.result_id,
+                time: p.prediction_timestamp ? new Date(p.prediction_timestamp).toLocaleTimeString() : '--',
+                dice: p.dice_values || '--',
+                total: p.total || '--',
+                actualGroup: p.actual_group || '?',
+                predStick: p.ai_stick_group || 'MEDIUM',
+                predExtreme: p.ai_extreme_group || 'MEDIUM',
+                predLowMid: p.ai_low_mid_group || 'MEDIUM',
+                predMidHigh: p.ai_mid_high_group || 'MEDIUM',
+                ensemble: p.ensemble_group || 'MEDIUM',
+                correctStick: p.correct_stick === 1,
+                correctExtreme: p.correct_extreme === 1,
+                correctLowMid: p.correct_low_mid === 1,
+                correctMidHigh: p.correct_mid_high === 1,
+                correctEnsemble: p.correct_ensemble === 1,
+                timestamp: new Date(p.prediction_timestamp),
+                isPending: p.actual_group === null
+            }));
             
-            for (const p of predictions) {
-                const isPending = p.is_pending === true || p.actual_group === null;
-                
-                const predictionEntry = {
-                    id: p.result_id,
-                    time: p.prediction_timestamp ? new Date(p.prediction_timestamp).toLocaleTimeString() : '--',
-                    dice: p.dice_values || '--',
-                    total: p.total || '--',
-                    actualGroup: p.actual_group || '?',
-                    predStick: p.ai_stick_group || 'MEDIUM',
-                    predExtreme: p.ai_extreme_group || 'MEDIUM',
-                    predLowMid: p.ai_low_mid_group || 'MEDIUM',
-                    predMidHigh: p.ai_mid_high_group || 'MEDIUM',
-                    ensemble: p.ensemble_group || 'MEDIUM',
-                    correctStick: p.correct_stick === 1,
-                    correctExtreme: p.correct_extreme === 1,
-                    correctLowMid: p.correct_low_mid === 1,
-                    correctMidHigh: p.correct_mid_high === 1,
-                    correctEnsemble: p.correct_ensemble === 1,
-                    timestamp: new Date(p.prediction_timestamp),
-                    isPending: isPending
-                };
-                this.predictionsMap.set(p.result_id, predictionEntry);
-            }
-            
-            this.predictionHistory = Array.from(this.predictionsMap.values())
-                .sort((a, b) => b.timestamp - a.timestamp);
-            
+            this.predictionHistory.sort((a, b) => b.timestamp - a.timestamp);
             console.log(`✅ Loaded ${this.predictionHistory.length} predictions from server`);
             this.renderHistoryTable();
         } catch (error) {
             console.error('Error loading predictions:', error);
         }
-    }
-    
-    async loadAIStats() {
-        try {
-            const response = await fetch(`${this.apiBase}/ai-stats`);
-            if (!response.ok) throw new Error('Failed to load AI stats');
-            const stats = await response.json();
-            
-            stats.forEach(stat => {
-                if (stat.ai_name === 'AI_Stick' && window.AI_Stick) window.AI_Stick.setAccuracy(stat.accuracy);
-                if (stat.ai_name === 'AI_ExtremeSwitch' && window.AI_ExtremeSwitch) window.AI_ExtremeSwitch.setAccuracy(stat.accuracy);
-                if (stat.ai_name === 'AI_LowMidSwitch' && window.AI_LowMidSwitch) window.AI_LowMidSwitch.setAccuracy(stat.accuracy);
-                if (stat.ai_name === 'AI_MidHighSwitch' && window.AI_MidHighSwitch) window.AI_MidHighSwitch.setAccuracy(stat.accuracy);
-                if (stat.ai_name === 'EnsembleVoter' && window.EnsembleVoterV4) window.EnsembleVoterV4.setAccuracy(stat.accuracy);
-            });
-        } catch (error) {
-            console.error('Error loading AI stats:', error);
-        }
-    }
-    
-    async loadPatternsFromServer() {
-        const aiNames = ['AI_Stick', 'AI_ExtremeSwitch', 'AI_LowMidSwitch', 'AI_MidHighSwitch'];
-        
-        for (const aiName of aiNames) {
-            try {
-                const response = await fetch(`${this.apiBase}/load-pattern/${aiName}`);
-                if (!response.ok) continue;
-                const patterns = await response.json();
-                
-                const ai = window[aiName];
-                if (ai && patterns && Object.keys(patterns).length > 0) {
-                    ai.loadFromServer(patterns);
-                }
-            } catch (error) {
-                console.error(`Error loading patterns for ${aiName}:`, error);
-            }
-        }
-    }
-    
-    async trainAllModels() {
-        console.log('🎓 Training all 4 AI models...');
-        
-        if (this.allResults.length < 5) {
-            console.log('⚠️ Not enough data for training, need at least 5 results');
-            return false;
-        }
-        
-        const historyInOrder = [...this.allResults].reverse();
-        console.log(`📚 Training with ${historyInOrder.length} historical results`);
-        
-        if (window.AI_Stick) {
-            window.AI_Stick.train(historyInOrder);
-            console.log('✅ AI-A (Stick) trained');
-        }
-        
-        if (window.AI_ExtremeSwitch) {
-            window.AI_ExtremeSwitch.train(historyInOrder);
-            console.log('✅ AI-B (Extreme Switch) trained');
-        }
-        
-        if (window.AI_LowMidSwitch) {
-            window.AI_LowMidSwitch.train(historyInOrder);
-            console.log('✅ AI-C (Low-Mid Switch) trained');
-        }
-        
-        if (window.AI_MidHighSwitch) {
-            window.AI_MidHighSwitch.train(historyInOrder);
-            console.log('✅ AI-D (Mid-High Switch) trained');
-        }
-        
-        if (window.EnsembleVoterV4) {
-            const accStick = window.AI_Stick?.getAccuracy() || 25;
-            const accExtreme = window.AI_ExtremeSwitch?.getAccuracy() || 25;
-            const accLowMid = window.AI_LowMidSwitch?.getAccuracy() || 25;
-            const accMidHigh = window.AI_MidHighSwitch?.getAccuracy() || 25;
-            
-            console.log(`📊 AI Accuracies - Stick:${accStick.toFixed(1)}%, Extreme:${accExtreme.toFixed(1)}%, LowMid:${accLowMid.toFixed(1)}%, MidHigh:${accMidHigh.toFixed(1)}%`);
-            
-            window.EnsembleVoterV4.updateWeights(accStick, accExtreme, accLowMid, accMidHigh);
-        }
-        
-        console.log('✅ All 4 AI models trained successfully!');
-        return true;
-    }
-    
-    getLastNResults(n) {
-        return this.allResults.slice(0, n).map(r => r.group);
-    }
-    
-    extractPredictionGroup(prediction) {
-        if (!prediction) return 'MEDIUM';
-        
-        if (prediction.prediction === "STICK" && prediction.nextGroup) {
-            return prediction.nextGroup;
-        }
-        if (prediction.prediction === "SWITCH" && prediction.nextGroup) {
-            return prediction.nextGroup;
-        }
-        if (prediction.prediction === "CONTINUE" && prediction.pattern) {
-            const parts = prediction.pattern.split("→");
-            if (parts.length >= 2) {
-                return parts[1].trim();
-            }
-        }
-        if (prediction.prediction === "BREAK" && prediction.nextGroup) {
-            return prediction.nextGroup;
-        }
-        
-        return prediction.nextGroup || 'MEDIUM';
-    }
-    
-    async handleNewResult(result) {
-        console.log('📊 New result arrived:', result);
-        
-        // Just reload predictions from server (they should already be updated)
-        await this.loadPredictionsFromServer();
-        await this.loadResults();
-        
-        this.updateUI();
-        this.updateRecentResultsDisplay();
-        this.updateStatisticsTable();
-        this.updateGroupProbabilities();
-        this.animateNewResult();
     }
     
     renderHistoryTable() {
@@ -457,120 +334,34 @@ class LightningDiceApp {
     }
     
     updateUI() {
-        this.updateAIPredictions();
+        this.loadServerPrediction();
+        this.loadAIStatsForDisplay();
     }
     
-    updateAIPredictions() {
-        const lastResults = this.getLastNResults(4);
-        if (lastResults.length < 2) return;
+    updateRecentResultsDisplay() {
+        const resultsGrid = document.getElementById('resultsGrid');
+        if (!resultsGrid) return;
         
-        const currentGroup = lastResults[0];
-        const previousGroup = lastResults.length >= 2 ? lastResults[1] : currentGroup;
-        
-        const predStick = window.AI_Stick ? window.AI_Stick.predict(currentGroup, previousGroup) : null;
-        const predExtreme = window.AI_ExtremeSwitch ? window.AI_ExtremeSwitch.predict(currentGroup, previousGroup) : null;
-        const predLowMid = window.AI_LowMidSwitch ? window.AI_LowMidSwitch.predict(currentGroup, previousGroup) : null;
-        const predMidHigh = window.AI_MidHighSwitch ? window.AI_MidHighSwitch.predict(currentGroup, previousGroup) : null;
-        
-        const ensemble = window.EnsembleVoterV4 ? window.EnsembleVoterV4.combine(predStick, predExtreme, predLowMid, predMidHigh, currentGroup, previousGroup) : null;
-        
-        const aiStickInput = document.getElementById('aiStickInput');
-        const aiStickPred = document.getElementById('aiStickPred');
-        const aiStickConf = document.getElementById('aiStickConf');
-        const aiStickAcc = document.getElementById('aiStickAcc');
-        
-        if (predStick && aiStickInput) {
-            aiStickInput.textContent = `${previousGroup} → ${currentGroup}`;
-            const stickText = predStick.prediction === "STICK" ? `${predStick.nextGroup} (Stick)` : `Switch to ${predStick.nextGroup}`;
-            if (aiStickPred) aiStickPred.innerHTML = `${this.getGroupIcon(predStick.nextGroup)} ${stickText}`;
-            if (aiStickConf) aiStickConf.textContent = `${predStick.confidence}%`;
-            if (aiStickAcc) aiStickAcc.textContent = `${(predStick.accuracy || 0).toFixed(1)}%`;
+        if (this.allResults.length === 0) {
+            resultsGrid.innerHTML = '<div class="loading">No results yet</div>';
+            return;
         }
         
-        const aiExtremeInput = document.getElementById('aiExtremeInput');
-        const aiExtremePred = document.getElementById('aiExtremePred');
-        const aiExtremeConf = document.getElementById('aiExtremeConf');
-        const aiExtremeAcc = document.getElementById('aiExtremeAcc');
-        
-        if (predExtreme && aiExtremeInput) {
-            aiExtremeInput.textContent = predExtreme.pattern || `${previousGroup} → ${currentGroup}`;
-            let extremeText = predExtreme.prediction === "CONTINUE" ? `Continue ${predExtreme.pattern?.split("→")[1]?.trim() || 'MEDIUM'}` : `Break to ${predExtreme.nextGroup}`;
-            if (aiExtremePred) aiExtremePred.innerHTML = `${this.getGroupIcon(predExtreme.nextGroup)} ${extremeText}`;
-            if (aiExtremeConf) aiExtremeConf.textContent = `${predExtreme.confidence}%`;
-            if (aiExtremeAcc) aiExtremeAcc.textContent = `${(predExtreme.accuracy || 0).toFixed(1)}%`;
-        }
-        
-        const aiLowMidInput = document.getElementById('aiLowMidInput');
-        const aiLowMidPred = document.getElementById('aiLowMidPred');
-        const aiLowMidConf = document.getElementById('aiLowMidConf');
-        const aiLowMidAcc = document.getElementById('aiLowMidAcc');
-        
-        if (predLowMid && aiLowMidInput) {
-            aiLowMidInput.textContent = predLowMid.pattern || `${previousGroup} → ${currentGroup}`;
-            let lowMidText = predLowMid.prediction === "CONTINUE" ? `Continue ${predLowMid.pattern?.split("→")[1]?.trim() || 'MEDIUM'}` : `Break to ${predLowMid.nextGroup}`;
-            if (aiLowMidPred) aiLowMidPred.innerHTML = `${this.getGroupIcon(predLowMid.nextGroup)} ${lowMidText}`;
-            if (aiLowMidConf) aiLowMidConf.textContent = `${predLowMid.confidence}%`;
-            if (aiLowMidAcc) aiLowMidAcc.textContent = `${(predLowMid.accuracy || 0).toFixed(1)}%`;
-        }
-        
-        const aiMidHighInput = document.getElementById('aiMidHighInput');
-        const aiMidHighPred = document.getElementById('aiMidHighPred');
-        const aiMidHighConf = document.getElementById('aiMidHighConf');
-        const aiMidHighAcc = document.getElementById('aiMidHighAcc');
-        
-        if (predMidHigh && aiMidHighInput) {
-            aiMidHighInput.textContent = predMidHigh.pattern || `${previousGroup} → ${currentGroup}`;
-            let midHighText = predMidHigh.prediction === "CONTINUE" ? `Continue ${predMidHigh.pattern?.split("→")[1]?.trim() || 'HIGH'}` : `Break to ${predMidHigh.nextGroup}`;
-            if (aiMidHighPred) aiMidHighPred.innerHTML = `${this.getGroupIcon(predMidHigh.nextGroup)} ${midHighText}`;
-            if (aiMidHighConf) aiMidHighConf.textContent = `${predMidHigh.confidence}%`;
-            if (aiMidHighAcc) aiMidHighAcc.textContent = `${(predMidHigh.accuracy || 0).toFixed(1)}%`;
-        }
-        
-        const voteCount = document.getElementById('voteCount');
-        const finalIcon = document.getElementById('finalIcon');
-        const finalName = document.getElementById('finalName');
-        const finalRange = document.getElementById('finalRange');
-        const confidenceFill = document.getElementById('confidenceFill');
-        const finalConfidence = document.getElementById('finalConfidence');
-        const finalExplanation = document.getElementById('finalExplanation');
-        const finalWeights = document.getElementById('finalWeights');
-        
-        if (ensemble) {
-            if (voteCount) voteCount.textContent = `(${ensemble.final.agreement}/4 AI agree)`;
-            if (finalIcon) finalIcon.textContent = this.getGroupIcon(ensemble.final.group);
-            if (finalName) finalName.textContent = ensemble.final.group;
-            if (finalRange) finalRange.textContent = `(${this.getGroupRange(ensemble.final.group)})`;
-            if (confidenceFill) confidenceFill.style.width = `${ensemble.final.confidence}%`;
-            if (finalConfidence) finalConfidence.textContent = `${ensemble.final.confidence}%`;
-            if (finalExplanation) finalExplanation.textContent = ensemble.explanation || `Ensemble predicts ${ensemble.final.group} with ${ensemble.final.confidence}% confidence`;
+        const recentResults = this.allResults.slice(0, 10);
+        resultsGrid.innerHTML = recentResults.map(result => {
+            const isLightning = result.multiplier > 10;
+            const time = result.timestamp.toLocaleTimeString();
+            const groupIcon = this.groups[result.group]?.icon || '🎲';
             
-            const weights = ensemble.weights;
-            if (weights && finalWeights) {
-                finalWeights.innerHTML = `Weights: Stick ${(weights.stick*100).toFixed(0)}% | Extreme ${(weights.extremeSwitch*100).toFixed(0)}% | Low-Mid ${(weights.lowMidSwitch*100).toFixed(0)}% | Mid-High ${(weights.midHighSwitch*100).toFixed(0)}%`;
-            }
-        }
-    }
-    
-    getGroupIcon(group) {
-        if (group === 'LOW') return '🔴';
-        if (group === 'MEDIUM') return '🟡';
-        if (group === 'HIGH') return '🟢';
-        return '⚪';
-    }
-    
-    getGroupRange(group) {
-        if (group === 'LOW') return '3-9';
-        if (group === 'MEDIUM') return '10-11';
-        if (group === 'HIGH') return '12-18';
-        return '-';
-    }
-    
-    getGroup(number) {
-        const num = parseInt(number);
-        if (num >= 3 && num <= 9) return 'LOW';
-        if (num >= 10 && num <= 11) return 'MEDIUM';
-        if (num >= 12 && num <= 18) return 'HIGH';
-        return 'UNKNOWN';
+            return `
+                <div class="result-card ${isLightning ? 'lightning' : ''}">
+                    <div class="result-number">${groupIcon} ${result.total}</div>
+                    <div class="result-multiplier">${result.multiplier}x</div>
+                    <div class="result-time">${time}</div>
+                    <div class="result-dice">${result.diceValues}</div>
+                </div>
+            `;
+        }).join('');
     }
     
     updateStatisticsTable() {
@@ -616,14 +407,6 @@ class LightningDiceApp {
         }).join('');
     }
     
-    getTimeAgo(date) {
-        const diffMins = Math.floor((new Date() - new Date(date)) / 60000);
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-        return `${Math.floor(diffMins / 1440)}d ago`;
-    }
-    
     updateGroupProbabilities() {
         const recentResults = this.allResults.slice(0, 10);
         const recentCount = { LOW: 0, MEDIUM: 0, HIGH: 0 };
@@ -653,30 +436,34 @@ class LightningDiceApp {
         return '❄️ Cooling down';
     }
     
-    updateRecentResultsDisplay() {
-        const resultsGrid = document.getElementById('resultsGrid');
-        if (!resultsGrid) return;
-        
-        if (this.allResults.length === 0) {
-            resultsGrid.innerHTML = '<div class="loading">No results yet</div>';
-            return;
-        }
-        
-        const recentResults = this.allResults.slice(0, 10);
-        resultsGrid.innerHTML = recentResults.map(result => {
-            const isLightning = result.multiplier > 10;
-            const time = result.timestamp.toLocaleTimeString();
-            const groupIcon = this.groups[result.group]?.icon || '🎲';
-            
-            return `
-                <div class="result-card ${isLightning ? 'lightning' : ''}">
-                    <div class="result-number">${groupIcon} ${result.total}</div>
-                    <div class="result-multiplier">${result.multiplier}x</div>
-                    <div class="result-time">${time}</div>
-                    <div class="result-dice">${result.diceValues}</div>
-                </div>
-            `;
-        }).join('');
+    getGroupIcon(group) {
+        if (group === 'LOW') return '🔴';
+        if (group === 'MEDIUM') return '🟡';
+        if (group === 'HIGH') return '🟢';
+        return '⚪';
+    }
+    
+    getGroupRange(group) {
+        if (group === 'LOW') return '3-9';
+        if (group === 'MEDIUM') return '10-11';
+        if (group === 'HIGH') return '12-18';
+        return '-';
+    }
+    
+    getGroup(number) {
+        const num = parseInt(number);
+        if (num >= 3 && num <= 9) return 'LOW';
+        if (num >= 10 && num <= 11) return 'MEDIUM';
+        if (num >= 12 && num <= 18) return 'HIGH';
+        return 'UNKNOWN';
+    }
+    
+    getTimeAgo(date) {
+        const diffMins = Math.floor((new Date() - new Date(date)) / 60000);
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+        return `${Math.floor(diffMins / 1440)}d ago`;
     }
     
     updateConnectionStatus(isConnected) {
@@ -686,11 +473,49 @@ class LightningDiceApp {
         if (statusDot) statusDot.style.background = isConnected ? '#4ade80' : '#ef4444';
     }
     
-    animateNewResult() {
-        const predictionBox = document.querySelector('.prediction-section');
-        if (predictionBox) {
-            predictionBox.style.animation = 'none';
-            setTimeout(() => predictionBox.style.animation = 'slideIn 0.3s ease', 10);
+    setupCollapsibleStats() {
+        const statsHeader = document.getElementById('statsHeader');
+        const statsContent = document.getElementById('statsContent');
+        const toggleIcon = document.getElementById('toggleIcon');
+        
+        if (statsHeader && statsContent && toggleIcon) {
+            statsHeader.addEventListener('click', () => {
+                const isVisible = statsContent.style.display !== 'none';
+                statsContent.style.display = isVisible ? 'none' : 'block';
+                toggleIcon.classList.toggle('open', !isVisible);
+            });
+        }
+    }
+    
+    bindEvents() {
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshData());
+        
+        const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+        if (autoRefreshToggle) {
+            autoRefreshToggle.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.startAutoRefresh();
+                    this.startTimer();
+                } else {
+                    this.stopAutoRefresh();
+                    this.stopTimer();
+                }
+            });
+        }
+        
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        if (prevBtn) prevBtn.addEventListener('click', () => this.changePage(-1));
+        if (nextBtn) nextBtn.addEventListener('click', () => this.changePage(1));
+    }
+    
+    changePage(delta) {
+        const newPage = this.currentPage + delta;
+        const totalPages = Math.ceil(this.predictionHistory.length / this.itemsPerPage);
+        if (newPage >= 1 && newPage <= totalPages) {
+            this.currentPage = newPage;
+            this.renderHistoryTable();
         }
     }
     
@@ -699,20 +524,14 @@ class LightningDiceApp {
         await this.loadStats();
         await this.loadResults();
         await this.loadPredictionsFromServer();
-        await this.loadAIStats();
-        await this.loadCurrentPrediction();
-        this.updateUI();
+        await this.loadServerPrediction();
+        await this.loadAIStatsForDisplay();
     }
     
     startAutoRefresh() {
         if (this.autoRefreshInterval) clearInterval(this.autoRefreshInterval);
         this.autoRefreshInterval = setInterval(() => {
-            console.log('🔄 Auto refresh - syncing with server');
-            this.loadStats();
-            this.loadResults();
-            this.loadPredictionsFromServer();
-            this.loadAIStats();
-            this.updateUI();
+            this.refreshData();
         }, this.refreshSeconds * 1000);
     }
     
@@ -739,15 +558,6 @@ class LightningDiceApp {
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
-        }
-    }
-    
-    showError(message) {
-        const errorDiv = document.getElementById('errorMessage');
-        if (errorDiv) {
-            errorDiv.textContent = `⚠️ ${message}`;
-            errorDiv.style.display = 'block';
-            setTimeout(() => errorDiv.style.display = 'none', 5000);
         }
     }
 }
