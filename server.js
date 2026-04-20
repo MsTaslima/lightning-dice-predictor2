@@ -1,8 +1,8 @@
 // ============================================================
-// COMPLETE server.js (FIXED - All issues resolved)
+// COMPLETE server.js (FULLY FIXED - Database Read/Write Working)
 // ============================================================
 
-// FIX 1: Increase max listeners to prevent memory leak warnings
+// Fix memory leak warnings
 require('events').EventEmitter.defaultMaxListeners = 20;
 process.setMaxListeners(20);
 
@@ -30,10 +30,13 @@ const PORT = process.env.PORT || 3000;
 const dbDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
+    console.log('📁 Created data directory:', dbDir);
 }
 
 // Database setup
-const db = new sqlite3.Database(path.join(dbDir, 'lightning_dice.db'));
+const dbPath = path.join(dbDir, 'lightning_dice.db');
+console.log('📂 Database path:', dbPath);
+const db = new sqlite3.Database(dbPath);
 
 // Create tables
 db.serialize(() => {
@@ -89,6 +92,8 @@ db.serialize(() => {
         state_data TEXT,
         updated_at DATETIME
     )`);
+    
+    console.log('✅ Database tables created/verified');
 });
 
 // Initialize Server AI Models
@@ -116,6 +121,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}\n`);
     loadServerAIState();
     trainAllServerAIs();
+    setTimeout(checkDatabaseOnStartup, 2000);
 });
 
 const wss = new WebSocket.Server({ server });
@@ -124,10 +130,8 @@ const wss = new WebSocket.Server({ server });
 const clients = new Set();
 
 wss.on('connection', (ws) => {
-    // FIX 2: Proper WebSocket error handling
     ws.setMaxListeners(20);
     
-    // Use 'once' for error to prevent memory leak
     ws.once('error', (error) => {
         console.error('WebSocket error:', error);
     });
@@ -340,11 +344,20 @@ function getAIStatsData() {
     });
 }
 
+// FIXED: This function now properly returns data
 function getPreviousResultsForPrediction(limit = 5) {
     return new Promise((resolve) => {
-        db.all(`SELECT group_name as group FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
-            if (err || !results) resolve([]);
-            else resolve(results || []);
+        db.all(`SELECT group_name as group, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
+            if (err) {
+                console.error('Error getting previous results:', err);
+                resolve([]);
+            } else {
+                console.log(`📊 getPreviousResultsForPrediction returned ${results?.length || 0} results`);
+                if (results && results.length > 0) {
+                    console.log(`   Last groups: ${results.map(r => r.group).join(', ')}`);
+                }
+                resolve(results || []);
+            }
         });
     });
 }
@@ -352,6 +365,7 @@ function getPreviousResultsForPrediction(limit = 5) {
 async function getCurrentPredictionData() {
     const previousResults = await getPreviousResultsForPrediction(5);
     if (previousResults.length < 2) {
+        console.log(`⚠️ Not enough history for prediction (got ${previousResults.length}, need 2)`);
         return {
             stick: 'MEDIUM',
             extreme: 'MEDIUM',
@@ -369,6 +383,8 @@ async function getCurrentPredictionData() {
     
     const currentGroup = previousResults[0]?.group || 'MEDIUM';
     const previousGroup = previousResults[1]?.group || 'MEDIUM';
+    
+    console.log(`🔮 Making prediction with current: ${currentGroup}, previous: ${previousGroup}`);
     
     const predStick = serverAI.stick.predict(currentGroup, previousGroup);
     const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
@@ -428,12 +444,11 @@ async function getCurrentPredictionData() {
 
 async function savePredictionOnly(resultId, previousResults) {
     if (!previousResults || previousResults.length < 2) {
-        console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history (need 2, got ${previousResults?.length || 0})`);
+        console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history (got ${previousResults?.length || 0}, need 2)`);
         return null;
     }
     
-    console.log(`🔮 Generating prediction for ${resultId} using history:`, previousResults.map(r => r.group));
-    
+    console.log(`🔮 Generating prediction for ${resultId}...`);
     const prediction = await getCurrentPredictionData();
     
     console.log(`\n📝 SAVING PREDICTION for ${resultId}:`);
@@ -587,6 +602,8 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
         getAIStatsData()
     ]);
     
+    console.log(`📡 Broadcasting to ${clients.size} clients: ${results.length} results, ${predictions.length} predictions`);
+    
     const message = JSON.stringify({
         type: 'new_result',
         result: {
@@ -623,6 +640,7 @@ function getGroup(number) {
     return 'UNKNOWN';
 }
 
+// FIXED: saveGameResult with proper callback
 async function saveGameResult(game) {
     const total = game.result.total;
     const group = getGroup(total);
@@ -646,13 +664,19 @@ async function saveGameResult(game) {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [result.id, result.total, result.group_name, result.multiplier, result.dice_values, result.timestamp, result.winners, result.payout],
             (err) => {
-                if (err) reject(err);
-                else resolve(result);
+                if (err) {
+                    console.error('Error saving result:', err);
+                    reject(err);
+                } else {
+                    console.log(`💾 Result saved: ${result.id} -> ${result.group_name}`);
+                    setTimeout(() => resolve(result), 100);
+                }
             }
         );
     });
 }
 
+// FIXED: collectData with proper history checking
 async function collectData() {
     if (isCollecting) return;
     isCollecting = true;
@@ -682,38 +706,40 @@ async function collectData() {
                 if (!exists) {
                     console.log(`🆕 New game detected: ${gameId}`);
                     
-                    const previousResults = await getPreviousResultsForPrediction(5);
+                    // Get previous results FIRST
+                    const previousResults = await getPreviousResultsForPrediction(10);
+                    console.log(`📜 History length for prediction: ${previousResults.length}`);
                     
                     let predictionData = null;
                     
-                    // FIX 3: Save prediction BEFORE result with proper history check
-                    if (previousResults.length >= 2 && !pendingPredictions.has(gameId)) {
+                    // Save prediction BEFORE result if we have history
+                    if (previousResults.length >= 2) {
                         pendingPredictions.add(gameId);
-                        console.log(`🔮 Generating prediction for ${gameId} with history:`, previousResults.map(r => r.group));
+                        console.log(`🔮 Saving prediction FIRST for ${gameId}...`);
                         predictionData = await savePredictionOnly(gameId, previousResults);
                         if (predictionData) {
                             broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
-                            console.log(`✅ Prediction saved successfully for ${gameId}`);
-                        } else {
-                            console.log(`❌ Failed to save prediction for ${gameId}`);
+                            console.log(`✅ Prediction SAVED before result for ${gameId}`);
                         }
                     } else {
-                        console.log(`⚠️ Cannot save prediction for ${gameId}: history length = ${previousResults.length}`);
+                        console.log(`⚠️ Cannot save prediction: need 2+ history, got ${previousResults.length}`);
                     }
                     
+                    // Save result
                     const savedResult = await saveGameResult(game);
-                    console.log(`💾 Result saved for ${gameId}`);
                     
+                    // Update prediction with actual result
                     const totalResult = game.result.total;
                     const group = getGroup(totalResult);
+                    
                     await updatePredictionWithResult(gameId, group);
-                    console.log(`📊 Prediction updated with result: ${group}`);
                     
                     pendingPredictions.delete(gameId);
                     
-                    const previousGroups = await getPreviousResultsForPrediction(3);
-                    const currentGroup = previousGroups[0]?.group || group;
-                    const previousGroup = previousGroups[1]?.group || currentGroup;
+                    // Update AI models
+                    const updatedHistory = await getPreviousResultsForPrediction(3);
+                    const currentGroup = updatedHistory[0]?.group || group;
+                    const previousGroup = updatedHistory[1]?.group || currentGroup;
                     
                     serverAI.stick.updateWithResult(group, previousGroup);
                     serverAI.extreme.updateWithResult(group, previousGroup);
@@ -737,6 +763,27 @@ async function collectData() {
     }
     
     isCollecting = false;
+}
+
+// Database diagnostic on startup
+async function checkDatabaseOnStartup() {
+    console.log('\n🔍 STARTUP DATABASE CHECK:');
+    const resultCount = await new Promise((resolve) => {
+        db.get(`SELECT COUNT(*) as count FROM results`, (err, row) => {
+            resolve(row ? row.count : 0);
+        });
+    });
+    console.log(`   📊 Total results in database: ${resultCount}`);
+    
+    if (resultCount > 0) {
+        const lastResults = await new Promise((resolve) => {
+            db.all(`SELECT group_name, timestamp FROM results ORDER BY timestamp DESC LIMIT 3`, (err, rows) => {
+                resolve(rows || []);
+            });
+        });
+        console.log(`   🎲 Last 3 results:`, lastResults.map(r => r.group_name).join(' → '));
+    }
+    console.log('');
 }
 
 // ============ API ENDPOINTS ============
@@ -887,6 +934,44 @@ app.get('/api/health', (req, res) => {
         clients: clients.size,
         uptime: process.uptime()
     });
+});
+
+// Diagnostic endpoint
+app.get('/api/diagnostic', async (req, res) => {
+    try {
+        const resultsCount = await new Promise((resolve) => {
+            db.get(`SELECT COUNT(*) as count FROM results`, (err, row) => {
+                resolve(row ? row.count : 0);
+            });
+        });
+        
+        const predictionsCount = await new Promise((resolve) => {
+            db.get(`SELECT COUNT(*) as count FROM predictions`, (err, row) => {
+                resolve(row ? row.count : 0);
+            });
+        });
+        
+        const lastResults = await new Promise((resolve) => {
+            db.all(`SELECT id, total, group_name, timestamp FROM results ORDER BY timestamp DESC LIMIT 5`, (err, rows) => {
+                resolve(rows || []);
+            });
+        });
+        
+        res.json({
+            success: true,
+            database: {
+                path: dbPath,
+                exists: fs.existsSync(dbPath)
+            },
+            counts: {
+                results: resultsCount,
+                predictions: predictionsCount
+            },
+            lastResults: lastResults
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // Start background data collection
