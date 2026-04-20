@@ -270,19 +270,27 @@ async function trainAllServerAIs() {
 // FIXED: getResultsData - properly returns data
 function getResultsData(limit = 100) {
     return new Promise((resolve) => {
-        db.all(`SELECT id, total, group_name as group, multiplier, dice_values as diceValues, timestamp 
+        db.all(`SELECT id, total, group_name as groupName, multiplier, dice_values as diceValues, timestamp 
                 FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, rows) => {
             if (err) {
                 console.error('Error in getResultsData:', err);
                 resolve([]);
             } else {
-                console.log(`✅ getResultsData returning ${rows?.length || 0} results`);
-                resolve(rows || []);
+                // Rename groupName back to group for frontend compatibility
+                const formatted = (rows || []).map(row => ({
+                    id: row.id,
+                    total: row.total,
+                    group: row.groupName,
+                    multiplier: row.multiplier,
+                    diceValues: row.diceValues,
+                    timestamp: row.timestamp
+                }));
+                console.log(`✅ getResultsData returning ${formatted.length} results`);
+                resolve(formatted);
             }
         });
     });
 }
-
 function getPredictionsData(limit = 500) {
     return new Promise((resolve) => {
         db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
