@@ -1,5 +1,5 @@
 // ============================================================
-// COMPLETE server.js (FULLY FIXED - All issues resolved)
+// COMPLETE server.js (FULLY FIXED - Pattern Display Issue Resolved)
 // ============================================================
 
 // Fix memory leak warnings
@@ -267,7 +267,6 @@ async function trainAllServerAIs() {
 
 // ============ DATA RETRIEVAL HELPER FUNCTIONS ============
 
-// FIXED: getResultsData - properly returns data
 function getResultsData(limit = 100) {
     return new Promise((resolve) => {
         db.all(`SELECT id, total, group_name as groupName, multiplier, dice_values as diceValues, timestamp 
@@ -276,7 +275,6 @@ function getResultsData(limit = 100) {
                 console.error('Error in getResultsData:', err);
                 resolve([]);
             } else {
-                // Rename groupName back to group for frontend compatibility
                 const formatted = (rows || []).map(row => ({
                     id: row.id,
                     total: row.total,
@@ -285,12 +283,15 @@ function getResultsData(limit = 100) {
                     diceValues: row.diceValues,
                     timestamp: row.timestamp
                 }));
+                // Sort by timestamp descending to ensure correct order
+                formatted.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 console.log(`✅ getResultsData returning ${formatted.length} results`);
                 resolve(formatted);
             }
         });
     });
 }
+
 function getPredictionsData(limit = 500) {
     return new Promise((resolve) => {
         db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
@@ -366,7 +367,6 @@ function getAIStatsData() {
     });
 }
 
-// FIXED: getPreviousResultsForPrediction - uses group_name
 function getPreviousResultsForPrediction(limit = 5) {
     return new Promise((resolve) => {
         db.all(`SELECT group_name as group_value, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
@@ -632,7 +632,6 @@ async function updateAIStatsTable(aiName, correct) {
 
 // ============ BROADCAST FUNCTIONS ============
 
-// FIXED: broadcastFullDataOnNewResult - includes allResults
 async function broadcastFullDataOnNewResult(gameResult, predictionData) {
     console.log(`📡 Preparing broadcast for ${clients.size} clients...`);
     
@@ -643,7 +642,11 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
         getAIStatsData()
     ]);
     
+    // Ensure results are sorted by timestamp descending
+    results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
     console.log(`📊 Data counts - Results: ${results.length}, Predictions: ${predictions.length}`);
+    console.log(`📊 Latest pattern: ${results[1]?.group || '?'} → ${results[0]?.group || '?'}`);
     
     const message = JSON.stringify({
         type: 'new_result',
@@ -836,6 +839,9 @@ app.get('/api/all-data', async (req, res) => {
             getAIStatsData(),
             getCurrentPredictionData()
         ]);
+        
+        // Ensure results are sorted
+        results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
         res.json({
             success: true,
