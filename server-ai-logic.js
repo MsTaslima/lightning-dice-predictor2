@@ -1,27 +1,22 @@
 // ============================================================
-// server-ai-logic.js (COMPLETE FIXED VERSION)
+// server-ai-logic.js (COMPLETE FINAL VERSION)
 // Four AI Pattern Recognition System - Server Side
+// ALL AI HAVE FALLBACK PREDICTION SYSTEM
 // ============================================================
 
 /**
  * AI-A: Stick Pattern Detector (Server Version)
  * Tracks: LOW→LOW, MEDIUM→MEDIUM, HIGH→HIGH
- * Learns what comes AFTER a streak breaks
- * Predicts the MOSTLY occurring group for each streak length
  */
 class ServerAI_Stick {
     constructor() {
         this.name = "AI_Stick";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Current streak tracking
         this.currentStreak = 0;
         this.currentStreakGroup = null;
         
-        // Data structure for streak length 2 to 18
         this.streakLengthData = {};
-        
-        // Initialize data for lengths 2 through 18
         for (let len = 2; len <= 18; len++) {
             this.streakLengthData[len] = {
                 totalBreaks: 0,
@@ -29,7 +24,6 @@ class ServerAI_Stick {
             };
         }
         
-        // Global fallback (when no data for specific length)
         this.globalFallback = {
             totalBreaks: 0,
             nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
@@ -41,30 +35,20 @@ class ServerAI_Stick {
     }
     
     init() {
-        console.log('🤖 Server AI-A (Stick) initialized - Tracks: LOW→LOW, MEDIUM→MEDIUM, HIGH→HIGH');
+        console.log('🤖 Server AI-A (Stick) initialized');
     }
     
-    /**
-     * Train from historical data
-     */
     train(history) {
         if (!history || history.length < 3) return false;
         
-        console.log(`📚 Server AI-A: Training with ${history.length} historical results...`);
-        
-        // Reset streak data
         for (let len = 2; len <= 18; len++) {
             this.streakLengthData[len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
-        this.globalFallback = {
-            totalBreaks: 0,
-            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
-        };
+        this.globalFallback = { totalBreaks: 0, nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 } };
         
-        // Process history to find streak patterns
         let tempStreak = 1;
         let tempStreakGroup = null;
         
@@ -72,28 +56,20 @@ class ServerAI_Stick {
             const prevGroup = history[i-1].group;
             const currGroup = history[i].group;
             
-            if (tempStreakGroup === null) {
-                tempStreakGroup = prevGroup;
-            }
+            if (tempStreakGroup === null) tempStreakGroup = prevGroup;
             
             if (prevGroup === currGroup && tempStreakGroup === prevGroup) {
                 tempStreak++;
             } else {
-                // Streak broke!
-                const streakLength = tempStreak;
-                
-                if (streakLength >= 2 && streakLength <= 18) {
-                    this.recordBreak(streakLength, currGroup);
+                if (tempStreak >= 2 && tempStreak <= 18) {
+                    this.recordBreak(tempStreak, currGroup);
                 }
-                
                 this.globalFallback.totalBreaks++;
                 this.globalFallback.nextGroups[currGroup]++;
-                
                 tempStreak = 1;
                 tempStreakGroup = currGroup;
             }
         }
-        
         return true;
     }
     
@@ -108,77 +84,102 @@ class ServerAI_Stick {
     
     getMostlyGroupForStreak(streakLength) {
         if (streakLength < 2 || streakLength > 18) return null;
-        
         const data = this.streakLengthData[streakLength];
         if (data.totalBreaks === 0) return null;
         
-        let maxCount = 0;
-        let mostlyGroup = null;
-        
+        let maxCount = 0, mostlyGroup = null;
         for (let group of this.groups) {
             if (data.nextGroups[group] > maxCount) {
                 maxCount = data.nextGroups[group];
                 mostlyGroup = group;
             }
         }
-        
         return mostlyGroup;
     }
     
     getConfidenceForStreak(streakLength, predictedGroup) {
         if (streakLength < 2 || streakLength > 18) return 30;
-        
         const data = this.streakLengthData[streakLength];
         if (data.totalBreaks === 0) return 30;
-        
         const count = data.nextGroups[predictedGroup] || 0;
         return Math.round((count / data.totalBreaks) * 100);
     }
     
     getGlobalMostlyGroup() {
         if (this.globalFallback.totalBreaks === 0) return "MEDIUM";
-        
-        let maxCount = 0;
-        let mostlyGroup = "MEDIUM";
-        
+        let maxCount = 0, mostlyGroup = "MEDIUM";
         for (let group of this.groups) {
             if (this.globalFallback.nextGroups[group] > maxCount) {
                 maxCount = this.globalFallback.nextGroups[group];
                 mostlyGroup = group;
             }
         }
-        
         return mostlyGroup;
     }
     
     getGlobalConfidence(predictedGroup) {
         if (this.globalFallback.totalBreaks === 0) return 30;
-        
         const count = this.globalFallback.nextGroups[predictedGroup] || 0;
         return Math.round((count / this.globalFallback.totalBreaks) * 100);
     }
     
     getCurrentStreakFromMemory(previousGroup, currentGroup) {
-        if (this.currentStreakGroup !== previousGroup) {
-            return 1;
-        }
+        if (this.currentStreakGroup !== previousGroup) return 1;
         return this.currentStreak;
+    }
+    
+    /**
+     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
+     * সব AI-র জন্য এই একই লজিক কাজ করবে
+     */
+    getFallbackPrediction() {
+        let bestGroup = "MEDIUM";
+        let bestCount = 0;
+        let totalBreaks = 0;
+        
+        for (let len = 2; len <= 18; len++) {
+            const data = this.streakLengthData[len];
+            if (data && data.nextGroups) {
+                for (let group of this.groups) {
+                    const count = data.nextGroups[group] || 0;
+                    totalBreaks += count;
+                    if (count > bestCount) {
+                        bestCount = count;
+                        bestGroup = group;
+                    }
+                }
+            }
+        }
+        
+        let confidence = 35;
+        if (totalBreaks > 0) {
+            const percentage = (bestCount / totalBreaks) * 100;
+            confidence = Math.min(70, Math.max(35, Math.round(percentage)));
+        }
+        
+        return {
+            nextGroup: bestGroup,
+            confidence: confidence,
+            hasSpecificData: false,
+            reason: `Fallback: Most common outcome from ${totalBreaks} breaks is ${bestGroup} (${confidence}%)`
+        };
     }
     
     predict(currentGroup, previousGroup) {
         // CASE 1: Not sticking (switch already happened)
         if (currentGroup !== previousGroup) {
+            const fallback = this.getFallbackPrediction();
             return {
                 model: this.name,
-                prediction: "SWITCH (Default)",
+                prediction: "FALLBACK",
                 currentGroup: currentGroup,
                 previousGroup: previousGroup,
                 currentStreak: 0,
-                nextGroup: "MEDIUM",
-                nextGroupConfidence: 30,
-                confidence: 30,
-                breakProbability: 50,
-                reason: "Pattern already broken, defaulting to MEDIUM with low confidence",
+                nextGroup: fallback.nextGroup,
+                nextGroupConfidence: fallback.confidence,
+                confidence: fallback.confidence,
+                breakProbability: 100 - fallback.confidence,
+                reason: fallback.reason,
                 accuracy: this.accuracy
             };
         }
@@ -188,24 +189,21 @@ class ServerAI_Stick {
         if (currentStreak === 0) currentStreak = 1;
         
         const streakLength = currentStreak;
-        
         let predictedGroup = null;
         let confidence = 0;
-        let mostlyDataExists = false;
+        let hasSpecificData = false;
         
         if (streakLength >= 2 && streakLength <= 18) {
             predictedGroup = this.getMostlyGroupForStreak(streakLength);
             if (predictedGroup) {
-                mostlyDataExists = true;
+                hasSpecificData = true;
                 confidence = this.getConfidenceForStreak(streakLength, predictedGroup);
             }
         }
         
-        // Fallback: use global data
         if (!predictedGroup) {
             predictedGroup = this.getGlobalMostlyGroup();
             confidence = this.getGlobalConfidence(predictedGroup);
-            mostlyDataExists = false;
         }
         
         const predictionType = (predictedGroup === currentGroup) ? "STICK" : "SWITCH";
@@ -220,16 +218,15 @@ class ServerAI_Stick {
             nextGroupConfidence: confidence,
             confidence: confidence,
             breakProbability: 100 - confidence,
-            hasSpecificData: mostlyDataExists,
-            reason: mostlyDataExists 
+            hasSpecificData: hasSpecificData,
+            reason: hasSpecificData 
                 ? `After ${streakLength} stick(s), mostly ${predictedGroup} (${confidence}% confidence)`
-                : `No data for ${streakLength} sticks yet, using global → ${predictedGroup}`,
+                : `No data for ${streakLength} sticks, using global → ${predictedGroup}`,
             accuracy: this.accuracy
         };
     }
     
     updateWithResult(resultGroup, previousGroup) {
-        // Update streak tracking
         if (previousGroup === resultGroup) {
             if (this.currentStreakGroup === previousGroup) {
                 this.currentStreak++;
@@ -239,14 +236,11 @@ class ServerAI_Stick {
             }
         } else {
             const streakLength = this.currentStreak;
-            
             if (streakLength >= 2 && streakLength <= 18) {
                 this.recordBreak(streakLength, resultGroup);
             }
-            
             this.globalFallback.totalBreaks++;
             this.globalFallback.nextGroups[resultGroup]++;
-            
             this.currentStreak = 1;
             this.currentStreakGroup = resultGroup;
         }
@@ -287,27 +281,19 @@ class ServerAI_Stick {
 
 
 /**
- * AI-B: Extreme Switch Detector (REFACTORED)
- * 
- * NEW LOGIC:
- * - Tracks alternating patterns: HIGH→LOW→HIGH→LOW... and LOW→HIGH→LOW→HIGH...
- * - Streak length 1 to 18 (number of alternations)
- * - Learns what comes AFTER the alternating pattern
- * - When pattern matches → predict based on streak length data
- * - When pattern doesn't match → predict based on break data of that pattern
+ * AI-B: Extreme Switch Detector
+ * Tracks alternating patterns: HIGH↔LOW
  */
 class ServerAI_ExtremeSwitch {
     constructor() {
         this.name = "AI_ExtremeSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Two patterns to track
         this.patterns = {
-            "HIGH→LOW": {},    // Alternating starting with HIGH→LOW
-            "LOW→HIGH": {}     // Alternating starting with LOW→HIGH
+            "HIGH→LOW": {},
+            "LOW→HIGH": {}
         };
         
-        // Data structure for each pattern and streak length (1 to 18)
         for (let len = 1; len <= 18; len++) {
             this.patterns["HIGH→LOW"][len] = {
                 totalBreaks: 0,
@@ -319,9 +305,8 @@ class ServerAI_ExtremeSwitch {
             };
         }
         
-        // For tracking current alternating streak
-        this.currentPatternKey = null;  // Which alternating pattern is active
-        this.currentStreak = 0;          // Current streak length (number of alternations)
+        this.currentPatternKey = null;
+        this.currentStreak = 0;
         
         this.totalPredictions = 0;
         this.correctPredictions = 0;
@@ -329,16 +314,12 @@ class ServerAI_ExtremeSwitch {
     }
     
     init() {
-        console.log('🤖 AI-B (Extreme Switch) REFACTORED - Alternating Pattern Tracker');
-        console.log('   ✅ Tracks: HIGH→LOW→HIGH→LOW... and LOW→HIGH→LOW→HIGH...');
-        console.log('   ✅ Streak length 1 to 18');
-        console.log('   ✅ Learns what comes AFTER each streak length');
+        console.log('🤖 AI-B (Extreme Switch) initialized');
     }
     
     train(history) {
         if (!history || history.length < 3) return false;
         
-        // Reset data
         for (let len = 1; len <= 18; len++) {
             this.patterns["HIGH→LOW"][len] = {
                 totalBreaks: 0,
@@ -350,7 +331,6 @@ class ServerAI_ExtremeSwitch {
             };
         }
         
-        // Process history to find alternating patterns and their breaks
         let tempPattern = null;
         let tempStreak = 0;
         
@@ -359,17 +339,13 @@ class ServerAI_ExtremeSwitch {
             const prev = history[i-1].group;
             const curr = history[i].group;
             
-            // Check if prevPrev → prev is an extreme switch
             const isExtreme1 = (prevPrev === 'HIGH' && prev === 'LOW') || (prevPrev === 'LOW' && prev === 'HIGH');
             
             if (isExtreme1) {
                 const patternKey = `${prevPrev}→${prev}`;
-                
-                // Check if continuing the alternating pattern
                 const expectedCurr = (patternKey === "HIGH→LOW") ? 'HIGH' : 'LOW';
                 
                 if (curr === expectedCurr) {
-                    // Pattern continues
                     if (tempPattern === patternKey) {
                         tempStreak++;
                     } else {
@@ -380,7 +356,6 @@ class ServerAI_ExtremeSwitch {
                         tempStreak = 1;
                     }
                 } else {
-                    // Pattern broke!
                     if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
                         this.recordBreak(tempPattern, tempStreak, curr);
                     }
@@ -395,8 +370,6 @@ class ServerAI_ExtremeSwitch {
                 tempStreak = 0;
             }
         }
-        
-        console.log(`✅ AI-B trained with ${history.length} results`);
         return true;
     }
     
@@ -438,20 +411,22 @@ class ServerAI_ExtremeSwitch {
     }
     
     /**
-     * Get the most likely next group when pattern doesn't match
-     * Uses break data from all patterns
+     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
      */
     getFallbackPrediction() {
         let bestGroup = "MEDIUM";
         let bestCount = 0;
+        let totalBreaks = 0;
         
         for (let len = 1; len <= 18; len++) {
             for (let pKey of ["HIGH→LOW", "LOW→HIGH"]) {
                 const data = this.patterns[pKey][len];
                 if (data && data.nextGroups) {
                     for (let group of this.groups) {
-                        if (data.nextGroups[group] > bestCount) {
-                            bestCount = data.nextGroups[group];
+                        const count = data.nextGroups[group] || 0;
+                        totalBreaks += count;
+                        if (count > bestCount) {
+                            bestCount = count;
                             bestGroup = group;
                         }
                     }
@@ -459,26 +434,25 @@ class ServerAI_ExtremeSwitch {
             }
         }
         
-        const confidence = bestCount > 0 ? Math.min(70, 30 + bestCount) : 35;
+        let confidence = 35;
+        if (totalBreaks > 0) {
+            const percentage = (bestCount / totalBreaks) * 100;
+            confidence = Math.min(70, Math.max(35, Math.round(percentage)));
+        }
         
         return {
             nextGroup: bestGroup,
             confidence: confidence,
             hasSpecificData: false,
-            reason: `Pattern not tracked, using most common outcome from break data → ${bestGroup}`
+            reason: `Fallback: Most common outcome from ${totalBreaks} breaks is ${bestGroup} (${confidence}%)`
         };
     }
     
     predict(currentGroup, previousGroup) {
-        // Get the pattern of last two results
         const immediatePattern = `${previousGroup}→${currentGroup}`;
         
-        // Check if this matches an alternating pattern we track
         if (immediatePattern === "HIGH→LOW" || immediatePattern === "LOW→HIGH") {
-            // We need to know the streak length of this alternating pattern
             let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
-            
-            // Ensure streak length is within bounds
             streakLength = Math.min(18, Math.max(1, streakLength));
             
             let predictedGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
@@ -489,7 +463,6 @@ class ServerAI_ExtremeSwitch {
                 hasSpecificData = true;
                 confidence = this.getConfidenceForPattern(immediatePattern, streakLength, predictedGroup);
             } else {
-                // No data for this streak length yet, use streak length 1 data or fallback
                 predictedGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
                 if (predictedGroup) {
                     confidence = this.getConfidenceForPattern(immediatePattern, 1, predictedGroup);
@@ -521,11 +494,10 @@ class ServerAI_ExtremeSwitch {
             };
         }
         
-        // Pattern doesn't match - use fallback
         const fallback = this.getFallbackPrediction();
         return {
             model: this.name,
-            prediction: "DEFAULT",
+            prediction: "FALLBACK",
             pattern: immediatePattern,
             currentGroup: currentGroup,
             previousGroup: previousGroup,
@@ -543,18 +515,14 @@ class ServerAI_ExtremeSwitch {
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
         
-        // Check if this continues an alternating pattern
         if (this.currentPatternKey === "HIGH→LOW") {
             const expectedNext = (this.currentStreak % 2 === 1) ? 'HIGH' : 'LOW';
             if (resultGroup === expectedNext) {
-                // Pattern continues
                 this.currentStreak++;
             } else {
-                // Pattern broke - record break
                 if (this.currentStreak >= 1 && this.currentStreak <= 18) {
                     this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
                 }
-                // Start new pattern if applicable
                 if (patternKey === "HIGH→LOW" || patternKey === "LOW→HIGH") {
                     this.currentPatternKey = patternKey;
                     this.currentStreak = 1;
@@ -582,7 +550,6 @@ class ServerAI_ExtremeSwitch {
             }
         }
         else {
-            // No active pattern - check if we should start one
             if (patternKey === "HIGH→LOW" || patternKey === "LOW→HIGH") {
                 this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
@@ -623,25 +590,19 @@ class ServerAI_ExtremeSwitch {
 
 
 /**
- * AI-C: Low-Mid Switch Detector (REFACTORED)
- * 
- * NEW LOGIC:
- * - Tracks alternating patterns: LOW→MEDIUM→LOW→MEDIUM... and MEDIUM→LOW→MEDIUM→LOW...
- * - Streak length 1 to 18 (number of alternations)
- * - Learns what comes AFTER the alternating pattern
+ * AI-C: Low-Mid Switch Detector
+ * Tracks alternating patterns: LOW↔MEDIUM
  */
 class ServerAI_LowMidSwitch {
     constructor() {
         this.name = "AI_LowMidSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Two patterns to track
         this.patterns = {
             "LOW→MEDIUM": {},
             "MEDIUM→LOW": {}
         };
         
-        // Data structure for each pattern and streak length (1 to 18)
         for (let len = 1; len <= 18; len++) {
             this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
@@ -653,7 +614,6 @@ class ServerAI_LowMidSwitch {
             };
         }
         
-        // For tracking current alternating streak
         this.currentPatternKey = null;
         this.currentStreak = 0;
         
@@ -663,9 +623,7 @@ class ServerAI_LowMidSwitch {
     }
     
     init() {
-        console.log('🤖 AI-C (Low-Mid Switch) REFACTORED - Alternating Pattern Tracker');
-        console.log('   ✅ Tracks: LOW→MEDIUM→LOW→MEDIUM... and MEDIUM→LOW→MEDIUM→LOW...');
-        console.log('   ✅ Streak length 1 to 18');
+        console.log('🤖 AI-C (Low-Mid Switch) initialized');
     }
     
     train(history) {
@@ -721,7 +679,6 @@ class ServerAI_LowMidSwitch {
                 tempStreak = 0;
             }
         }
-        
         return true;
     }
     
@@ -762,17 +719,23 @@ class ServerAI_LowMidSwitch {
         return Math.round((count / data.totalBreaks) * 100);
     }
     
+    /**
+     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
+     */
     getFallbackPrediction() {
-        let bestGroup = "HIGH";  // Default for Low-Mid is HIGH as per instruction
+        let bestGroup = "HIGH";
         let bestCount = 0;
+        let totalBreaks = 0;
         
         for (let len = 1; len <= 18; len++) {
             for (let pKey of ["LOW→MEDIUM", "MEDIUM→LOW"]) {
                 const data = this.patterns[pKey][len];
                 if (data && data.nextGroups) {
                     for (let group of this.groups) {
-                        if (data.nextGroups[group] > bestCount) {
-                            bestCount = data.nextGroups[group];
+                        const count = data.nextGroups[group] || 0;
+                        totalBreaks += count;
+                        if (count > bestCount) {
+                            bestCount = count;
                             bestGroup = group;
                         }
                     }
@@ -780,13 +743,17 @@ class ServerAI_LowMidSwitch {
             }
         }
         
-        const confidence = bestCount > 0 ? Math.min(70, 30 + bestCount) : 40;
+        let confidence = 40;
+        if (totalBreaks > 0) {
+            const percentage = (bestCount / totalBreaks) * 100;
+            confidence = Math.min(70, Math.max(40, Math.round(percentage)));
+        }
         
         return {
             nextGroup: bestGroup,
             confidence: confidence,
             hasSpecificData: false,
-            reason: `Pattern not tracked, using most common outcome → ${bestGroup}`
+            reason: `Fallback: Most common outcome from ${totalBreaks} breaks is ${bestGroup} (${confidence}%)`
         };
     }
     
@@ -839,7 +806,7 @@ class ServerAI_LowMidSwitch {
         const fallback = this.getFallbackPrediction();
         return {
             model: this.name,
-            prediction: "DEFAULT",
+            prediction: "FALLBACK",
             pattern: immediatePattern,
             currentGroup: currentGroup,
             previousGroup: previousGroup,
@@ -932,25 +899,19 @@ class ServerAI_LowMidSwitch {
 
 
 /**
- * AI-D: Mid-High Switch Detector (REFACTORED)
- * 
- * NEW LOGIC:
- * - Tracks alternating patterns: MEDIUM→HIGH→MEDIUM→HIGH... and HIGH→MEDIUM→HIGH→MEDIUM...
- * - Streak length 1 to 18 (number of alternations)
- * - Learns what comes AFTER the alternating pattern
+ * AI-D: Mid-High Switch Detector
+ * Tracks alternating patterns: MEDIUM↔HIGH
  */
 class ServerAI_MidHighSwitch {
     constructor() {
         this.name = "AI_MidHighSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Two patterns to track
         this.patterns = {
             "MEDIUM→HIGH": {},
             "HIGH→MEDIUM": {}
         };
         
-        // Data structure for each pattern and streak length (1 to 18)
         for (let len = 1; len <= 18; len++) {
             this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
@@ -962,7 +923,6 @@ class ServerAI_MidHighSwitch {
             };
         }
         
-        // For tracking current alternating streak
         this.currentPatternKey = null;
         this.currentStreak = 0;
         
@@ -972,9 +932,7 @@ class ServerAI_MidHighSwitch {
     }
     
     init() {
-        console.log('🤖 AI-D (Mid-High Switch) REFACTORED - Alternating Pattern Tracker');
-        console.log('   ✅ Tracks: MEDIUM→HIGH→MEDIUM→HIGH... and HIGH→MEDIUM→HIGH→MEDIUM...');
-        console.log('   ✅ Streak length 1 to 18');
+        console.log('🤖 AI-D (Mid-High Switch) initialized');
     }
     
     train(history) {
@@ -1030,7 +988,6 @@ class ServerAI_MidHighSwitch {
                 tempStreak = 0;
             }
         }
-        
         return true;
     }
     
@@ -1071,17 +1028,23 @@ class ServerAI_MidHighSwitch {
         return Math.round((count / data.totalBreaks) * 100);
     }
     
+    /**
+     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
+     */
     getFallbackPrediction() {
-        let bestGroup = "LOW";  // Default for Mid-High is LOW as per instruction
+        let bestGroup = "LOW";
         let bestCount = 0;
+        let totalBreaks = 0;
         
         for (let len = 1; len <= 18; len++) {
             for (let pKey of ["MEDIUM→HIGH", "HIGH→MEDIUM"]) {
                 const data = this.patterns[pKey][len];
                 if (data && data.nextGroups) {
                     for (let group of this.groups) {
-                        if (data.nextGroups[group] > bestCount) {
-                            bestCount = data.nextGroups[group];
+                        const count = data.nextGroups[group] || 0;
+                        totalBreaks += count;
+                        if (count > bestCount) {
+                            bestCount = count;
                             bestGroup = group;
                         }
                     }
@@ -1089,13 +1052,17 @@ class ServerAI_MidHighSwitch {
             }
         }
         
-        const confidence = bestCount > 0 ? Math.min(70, 30 + bestCount) : 40;
+        let confidence = 40;
+        if (totalBreaks > 0) {
+            const percentage = (bestCount / totalBreaks) * 100;
+            confidence = Math.min(70, Math.max(40, Math.round(percentage)));
+        }
         
         return {
             nextGroup: bestGroup,
             confidence: confidence,
             hasSpecificData: false,
-            reason: `Pattern not tracked, using most common outcome → ${bestGroup}`
+            reason: `Fallback: Most common outcome from ${totalBreaks} breaks is ${bestGroup} (${confidence}%)`
         };
     }
     
@@ -1148,7 +1115,7 @@ class ServerAI_MidHighSwitch {
         const fallback = this.getFallbackPrediction();
         return {
             model: this.name,
-            prediction: "DEFAULT",
+            prediction: "FALLBACK",
             pattern: immediatePattern,
             currentGroup: currentGroup,
             previousGroup: previousGroup,
@@ -1242,7 +1209,6 @@ class ServerAI_MidHighSwitch {
 
 /**
  * Server Ensemble Voter (UNCHANGED)
- * Real-time weight updates based on AI performance
  */
 class ServerEnsembleVoter {
     constructor() {
@@ -1267,7 +1233,6 @@ class ServerEnsembleVoter {
     }
     
     combine(predStick, predExtreme, predLowMid, predMidHigh) {
-        // Store for weight update later
         this.lastPredictions = {
             stick: predStick,
             extreme: predExtreme,
@@ -1359,7 +1324,6 @@ class ServerEnsembleVoter {
         if (correct.midHigh) this.weights.midHighSwitch += weightChange;
         else this.weights.midHighSwitch -= weightChange;
         
-        // Apply limits
         this.weights.stick = Math.min(this.maxWeight, Math.max(this.minWeight, this.weights.stick));
         this.weights.extremeSwitch = Math.min(this.maxWeight, Math.max(this.minWeight, this.weights.extremeSwitch));
         this.weights.lowMidSwitch = Math.min(this.maxWeight, Math.max(this.minWeight, this.weights.lowMidSwitch));
