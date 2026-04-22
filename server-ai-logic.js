@@ -1,14 +1,14 @@
-// server-ai-logic.js (UPDATED - Matches Client AI Logic Exactly)
+// ============================================================
+// server-ai-logic.js (COMPLETE FIXED VERSION)
+// Four AI Pattern Recognition System - Server Side
+// ============================================================
 
 /**
  * AI-A: Stick Pattern Detector (Server Version)
- * EXACT MATCH with client ai-stick.js
- * 
  * Tracks: LOW→LOW, MEDIUM→MEDIUM, HIGH→HIGH
  * Learns what comes AFTER a streak breaks
  * Predicts the MOSTLY occurring group for each streak length
  */
-
 class ServerAI_Stick {
     constructor() {
         this.name = "AI_Stick";
@@ -41,7 +41,7 @@ class ServerAI_Stick {
     }
     
     init() {
-        console.log('🤖 Server AI-A (Stick) initialized - Matches client logic');
+        console.log('🤖 Server AI-A (Stick) initialized - Tracks: LOW→LOW, MEDIUM→MEDIUM, HIGH→HIGH');
     }
     
     /**
@@ -287,213 +287,306 @@ class ServerAI_Stick {
 
 
 /**
- * AI-B: Extreme Switch Detector (Server Version)
- * EXACT MATCH with client ai-extreme-switch.js
+ * AI-B: Extreme Switch Detector (REFACTORED)
  * 
- * ONLY tracks: LOW→HIGH and HIGH→LOW
- * Tracks streak lengths 2-18 for EACH pattern separately
+ * NEW LOGIC:
+ * - Tracks alternating patterns: HIGH→LOW→HIGH→LOW... and LOW→HIGH→LOW→HIGH...
+ * - Streak length 1 to 18 (number of alternations)
+ * - Learns what comes AFTER the alternating pattern
+ * - When pattern matches → predict based on streak length data
+ * - When pattern doesn't match → predict based on break data of that pattern
  */
 class ServerAI_ExtremeSwitch {
     constructor() {
         this.name = "AI_ExtremeSwitch";
-        this.patterns = ['LOW→HIGH', 'HIGH→LOW'];
+        this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        this.switchData = {
-            "LOW→HIGH": {},
-            "HIGH→LOW": {}
+        // Two patterns to track
+        this.patterns = {
+            "HIGH→LOW": {},    // Alternating starting with HIGH→LOW
+            "LOW→HIGH": {}     // Alternating starting with LOW→HIGH
         };
         
-        for (let len = 2; len <= 18; len++) {
-            this.switchData["LOW→HIGH"][len] = {
+        // Data structure for each pattern and streak length (1 to 18)
+        for (let len = 1; len <= 18; len++) {
+            this.patterns["HIGH→LOW"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
-            this.switchData["HIGH→LOW"][len] = {
+            this.patterns["LOW→HIGH"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
         
-        this.currentPattern = null;
-        this.currentStreak = 0;
+        // For tracking current alternating streak
+        this.currentPatternKey = null;  // Which alternating pattern is active
+        this.currentStreak = 0;          // Current streak length (number of alternations)
         
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
     }
     
+    init() {
+        console.log('🤖 AI-B (Extreme Switch) REFACTORED - Alternating Pattern Tracker');
+        console.log('   ✅ Tracks: HIGH→LOW→HIGH→LOW... and LOW→HIGH→LOW→HIGH...');
+        console.log('   ✅ Streak length 1 to 18');
+        console.log('   ✅ Learns what comes AFTER each streak length');
+    }
+    
     train(history) {
         if (!history || history.length < 3) return false;
         
-        for (let len = 2; len <= 18; len++) {
-            this.switchData["LOW→HIGH"][len] = {
+        // Reset data
+        for (let len = 1; len <= 18; len++) {
+            this.patterns["HIGH→LOW"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
-            this.switchData["HIGH→LOW"][len] = {
+            this.patterns["LOW→HIGH"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
         
+        // Process history to find alternating patterns and their breaks
         let tempPattern = null;
         let tempStreak = 0;
         
-        for (let i = 1; i < history.length; i++) {
-            const prevGroup = history[i-1].group;
-            const currGroup = history[i].group;
-            const patternKey = `${prevGroup}→${currGroup}`;
+        for (let i = 2; i < history.length; i++) {
+            const prevPrev = history[i-2].group;
+            const prev = history[i-1].group;
+            const curr = history[i].group;
             
-            if (patternKey === "LOW→HIGH" || patternKey === "HIGH→LOW") {
-                if (tempPattern === patternKey) {
-                    tempStreak++;
-                } else {
-                    if (tempPattern !== null && tempStreak >= 2 && tempStreak <= 18) {
-                        this.recordBreak(tempPattern, tempStreak, currGroup);
+            // Check if prevPrev → prev is an extreme switch
+            const isExtreme1 = (prevPrev === 'HIGH' && prev === 'LOW') || (prevPrev === 'LOW' && prev === 'HIGH');
+            
+            if (isExtreme1) {
+                const patternKey = `${prevPrev}→${prev}`;
+                
+                // Check if continuing the alternating pattern
+                const expectedCurr = (patternKey === "HIGH→LOW") ? 'HIGH' : 'LOW';
+                
+                if (curr === expectedCurr) {
+                    // Pattern continues
+                    if (tempPattern === patternKey) {
+                        tempStreak++;
+                    } else {
+                        if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                            this.recordBreak(tempPattern, tempStreak, prev);
+                        }
+                        tempPattern = patternKey;
+                        tempStreak = 1;
                     }
-                    tempPattern = patternKey;
-                    tempStreak = 1;
+                } else {
+                    // Pattern broke!
+                    if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                        this.recordBreak(tempPattern, tempStreak, curr);
+                    }
+                    tempPattern = null;
+                    tempStreak = 0;
                 }
             } else {
-                if (tempPattern !== null && tempStreak >= 2 && tempStreak <= 18) {
-                    this.recordBreak(tempPattern, tempStreak, currGroup);
+                if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                    this.recordBreak(tempPattern, tempStreak, curr);
                 }
                 tempPattern = null;
                 tempStreak = 0;
             }
         }
         
+        console.log(`✅ AI-B trained with ${history.length} results`);
         return true;
     }
     
-    recordBreak(pattern, streakLength, nextGroup) {
-        if (streakLength >= 2 && streakLength <= 18) {
-            if (this.switchData[pattern] && this.switchData[pattern][streakLength]) {
-                this.switchData[pattern][streakLength].totalBreaks++;
-                this.switchData[pattern][streakLength].nextGroups[nextGroup]++;
+    recordBreak(patternKey, streakLength, nextGroup) {
+        if (streakLength >= 1 && streakLength <= 18) {
+            if (this.patterns[patternKey] && this.patterns[patternKey][streakLength]) {
+                this.patterns[patternKey][streakLength].totalBreaks++;
+                this.patterns[patternKey][streakLength].nextGroups[nextGroup]++;
             }
         }
     }
     
-    getMostlyGroupForSwitch(pattern, streakLength) {
-        if (streakLength < 2 || streakLength > 18) return null;
-        if (!this.switchData[pattern] || !this.switchData[pattern][streakLength]) return null;
+    getMostlyGroupForPattern(patternKey, streakLength) {
+        if (streakLength < 1 || streakLength > 18) return null;
+        if (!this.patterns[patternKey] || !this.patterns[patternKey][streakLength]) return null;
         
-        const data = this.switchData[pattern][streakLength];
+        const data = this.patterns[patternKey][streakLength];
         if (data.totalBreaks === 0) return null;
         
-        let maxCount = 0;
-        let mostlyGroup = null;
-        
-        const groups = ["LOW", "MEDIUM", "HIGH"];
-        for (let group of groups) {
+        let maxCount = 0, mostlyGroup = null;
+        for (let group of this.groups) {
             if (data.nextGroups[group] > maxCount) {
                 maxCount = data.nextGroups[group];
                 mostlyGroup = group;
             }
         }
-        
         return mostlyGroup;
     }
     
-    getConfidenceForSwitch(pattern, streakLength, predictedGroup) {
-        if (streakLength < 2 || streakLength > 18) return 30;
-        if (!this.switchData[pattern] || !this.switchData[pattern][streakLength]) return 30;
+    getConfidenceForPattern(patternKey, streakLength, predictedGroup) {
+        if (streakLength < 1 || streakLength > 18) return 30;
+        if (!this.patterns[patternKey] || !this.patterns[patternKey][streakLength]) return 30;
         
-        const data = this.switchData[pattern][streakLength];
+        const data = this.patterns[patternKey][streakLength];
         if (data.totalBreaks === 0) return 30;
         
         const count = data.nextGroups[predictedGroup] || 0;
         return Math.round((count / data.totalBreaks) * 100);
     }
     
-    getCurrentStreakFromMemory(patternKey) {
-        if (this.currentPattern === patternKey) {
-            return this.currentStreak;
+    /**
+     * Get the most likely next group when pattern doesn't match
+     * Uses break data from all patterns
+     */
+    getFallbackPrediction() {
+        let bestGroup = "MEDIUM";
+        let bestCount = 0;
+        
+        for (let len = 1; len <= 18; len++) {
+            for (let pKey of ["HIGH→LOW", "LOW→HIGH"]) {
+                const data = this.patterns[pKey][len];
+                if (data && data.nextGroups) {
+                    for (let group of this.groups) {
+                        if (data.nextGroups[group] > bestCount) {
+                            bestCount = data.nextGroups[group];
+                            bestGroup = group;
+                        }
+                    }
+                }
+            }
         }
-        return 1;
+        
+        const confidence = bestCount > 0 ? Math.min(70, 30 + bestCount) : 35;
+        
+        return {
+            nextGroup: bestGroup,
+            confidence: confidence,
+            hasSpecificData: false,
+            reason: `Pattern not tracked, using most common outcome from break data → ${bestGroup}`
+        };
     }
     
     predict(currentGroup, previousGroup) {
-        const patternKey = `${previousGroup}→${currentGroup}`;
+        // Get the pattern of last two results
+        const immediatePattern = `${previousGroup}→${currentGroup}`;
         
-        // Pattern mismatch
-        if (patternKey !== "LOW→HIGH" && patternKey !== "HIGH→LOW") {
+        // Check if this matches an alternating pattern we track
+        if (immediatePattern === "HIGH→LOW" || immediatePattern === "LOW→HIGH") {
+            // We need to know the streak length of this alternating pattern
+            let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
+            
+            // Ensure streak length is within bounds
+            streakLength = Math.min(18, Math.max(1, streakLength));
+            
+            let predictedGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            let confidence = 0;
+            let hasSpecificData = false;
+            
+            if (predictedGroup) {
+                hasSpecificData = true;
+                confidence = this.getConfidenceForPattern(immediatePattern, streakLength, predictedGroup);
+            } else {
+                // No data for this streak length yet, use streak length 1 data or fallback
+                predictedGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
+                if (predictedGroup) {
+                    confidence = this.getConfidenceForPattern(immediatePattern, 1, predictedGroup);
+                    hasSpecificData = true;
+                } else {
+                    predictedGroup = "MEDIUM";
+                    confidence = 40;
+                }
+            }
+            
+            const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
+            
             return {
                 model: this.name,
-                prediction: "DEFAULT",
-                pattern: patternKey,
+                prediction: predictionType,
+                pattern: immediatePattern,
                 currentGroup: currentGroup,
                 previousGroup: previousGroup,
-                currentStreak: 0,
-                nextGroup: "MEDIUM",
-                nextGroupConfidence: 30,
-                confidence: 30,
-                reason: "Pattern mismatch (not LOW→HIGH or HIGH→LOW), defaulting to MEDIUM",
+                currentStreak: streakLength,
+                nextGroup: predictedGroup,
+                nextGroupConfidence: confidence,
+                confidence: confidence,
+                breakProbability: 100 - confidence,
+                hasSpecificData: hasSpecificData,
+                reason: hasSpecificData 
+                    ? `After ${streakLength}x alternating ${immediatePattern}, mostly ${predictedGroup} (${confidence}% confidence)`
+                    : `No data for ${streakLength}x alternating ${immediatePattern}, using default MEDIUM`,
                 accuracy: this.accuracy
             };
         }
         
-        let currentStreak = this.getCurrentStreakFromMemory(patternKey);
-        const streakLength = currentStreak;
-        
-        let predictedGroup = null;
-        let confidence = 0;
-        let hasSpecificData = false;
-        
-        if (streakLength >= 2 && streakLength <= 18) {
-            predictedGroup = this.getMostlyGroupForSwitch(patternKey, streakLength);
-            if (predictedGroup) {
-                hasSpecificData = true;
-                confidence = this.getConfidenceForSwitch(patternKey, streakLength, predictedGroup);
-            }
-        }
-        
-        // FALLBACK: If no specific data, use MEDIUM (40% confidence)
-        if (!predictedGroup) {
-            predictedGroup = "MEDIUM";
-            confidence = 40;
-            hasSpecificData = false;
-        }
-        
-        const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
-        
+        // Pattern doesn't match - use fallback
+        const fallback = this.getFallbackPrediction();
         return {
             model: this.name,
-            prediction: predictionType,
-            pattern: patternKey,
+            prediction: "DEFAULT",
+            pattern: immediatePattern,
             currentGroup: currentGroup,
             previousGroup: previousGroup,
-            currentStreak: streakLength,
-            nextGroup: predictedGroup,
-            nextGroupConfidence: confidence,
-            confidence: confidence,
-            breakProbability: 100 - confidence,
-            hasSpecificData: hasSpecificData,
-            reason: hasSpecificData 
-                ? `After ${streakLength}x ${patternKey}, mostly ${predictedGroup} (${confidence}% confidence)`
-                : `No specific data for ${streakLength}x ${patternKey}, using MEDIUM as instructed (40% confidence)`,
+            currentStreak: 0,
+            nextGroup: fallback.nextGroup,
+            nextGroupConfidence: fallback.confidence,
+            confidence: fallback.confidence,
+            breakProbability: 100 - fallback.confidence,
+            hasSpecificData: false,
+            reason: fallback.reason,
             accuracy: this.accuracy
         };
     }
     
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
-        const isExtremeSwitch = (patternKey === "LOW→HIGH" || patternKey === "HIGH→LOW");
         
-        if (isExtremeSwitch) {
-            if (this.currentPattern === patternKey) {
+        // Check if this continues an alternating pattern
+        if (this.currentPatternKey === "HIGH→LOW") {
+            const expectedNext = (this.currentStreak % 2 === 1) ? 'HIGH' : 'LOW';
+            if (resultGroup === expectedNext) {
+                // Pattern continues
                 this.currentStreak++;
             } else {
-                this.currentPattern = patternKey;
+                // Pattern broke - record break
+                if (this.currentStreak >= 1 && this.currentStreak <= 18) {
+                    this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
+                }
+                // Start new pattern if applicable
+                if (patternKey === "HIGH→LOW" || patternKey === "LOW→HIGH") {
+                    this.currentPatternKey = patternKey;
+                    this.currentStreak = 1;
+                } else {
+                    this.currentPatternKey = null;
+                    this.currentStreak = 0;
+                }
+            }
+        } 
+        else if (this.currentPatternKey === "LOW→HIGH") {
+            const expectedNext = (this.currentStreak % 2 === 1) ? 'LOW' : 'HIGH';
+            if (resultGroup === expectedNext) {
+                this.currentStreak++;
+            } else {
+                if (this.currentStreak >= 1 && this.currentStreak <= 18) {
+                    this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
+                }
+                if (patternKey === "HIGH→LOW" || patternKey === "LOW→HIGH") {
+                    this.currentPatternKey = patternKey;
+                    this.currentStreak = 1;
+                } else {
+                    this.currentPatternKey = null;
+                    this.currentStreak = 0;
+                }
+            }
+        }
+        else {
+            // No active pattern - check if we should start one
+            if (patternKey === "HIGH→LOW" || patternKey === "LOW→HIGH") {
+                this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
             }
-        } else {
-            if (this.currentPattern !== null && this.currentStreak >= 2 && this.currentStreak <= 18) {
-                this.recordBreak(this.currentPattern, this.currentStreak, resultGroup);
-            }
-            this.currentPattern = null;
-            this.currentStreak = 0;
         }
     }
     
@@ -507,8 +600,8 @@ class ServerAI_ExtremeSwitch {
     
     loadFromData(data) {
         if (data) {
-            this.switchData = data.switchData || this.switchData;
-            this.currentPattern = data.currentPattern || null;
+            this.patterns = data.patterns || this.patterns;
+            this.currentPatternKey = data.currentPatternKey || null;
             this.currentStreak = data.currentStreak || 0;
             this.totalPredictions = data.totalPredictions || 0;
             this.correctPredictions = data.correctPredictions || 0;
@@ -518,8 +611,8 @@ class ServerAI_ExtremeSwitch {
     
     exportForServer() {
         return {
-            switchData: this.switchData,
-            currentPattern: this.currentPattern,
+            patterns: this.patterns,
+            currentPatternKey: this.currentPatternKey,
             currentStreak: this.currentStreak,
             totalPredictions: this.totalPredictions,
             correctPredictions: this.correctPredictions,
@@ -530,34 +623,38 @@ class ServerAI_ExtremeSwitch {
 
 
 /**
- * AI-C: Low-Mid Switch Detector (Server Version)
- * EXACT MATCH with client ai-low-mid-switch.js
+ * AI-C: Low-Mid Switch Detector (REFACTORED)
  * 
- * ONLY tracks: LOW→MEDIUM and MEDIUM→LOW
- * If no specific data → predicts HIGH
+ * NEW LOGIC:
+ * - Tracks alternating patterns: LOW→MEDIUM→LOW→MEDIUM... and MEDIUM→LOW→MEDIUM→LOW...
+ * - Streak length 1 to 18 (number of alternations)
+ * - Learns what comes AFTER the alternating pattern
  */
 class ServerAI_LowMidSwitch {
     constructor() {
         this.name = "AI_LowMidSwitch";
-        this.patterns = ['LOW→MEDIUM', 'MEDIUM→LOW'];
+        this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        this.switchData = {
+        // Two patterns to track
+        this.patterns = {
             "LOW→MEDIUM": {},
             "MEDIUM→LOW": {}
         };
         
-        for (let len = 2; len <= 18; len++) {
-            this.switchData["LOW→MEDIUM"][len] = {
+        // Data structure for each pattern and streak length (1 to 18)
+        for (let len = 1; len <= 18; len++) {
+            this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
-            this.switchData["MEDIUM→LOW"][len] = {
+            this.patterns["MEDIUM→LOW"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
         
-        this.currentPattern = null;
+        // For tracking current alternating streak
+        this.currentPatternKey = null;
         this.currentStreak = 0;
         
         this.totalPredictions = 0;
@@ -565,15 +662,21 @@ class ServerAI_LowMidSwitch {
         this.accuracy = 0;
     }
     
+    init() {
+        console.log('🤖 AI-C (Low-Mid Switch) REFACTORED - Alternating Pattern Tracker');
+        console.log('   ✅ Tracks: LOW→MEDIUM→LOW→MEDIUM... and MEDIUM→LOW→MEDIUM→LOW...');
+        console.log('   ✅ Streak length 1 to 18');
+    }
+    
     train(history) {
         if (!history || history.length < 3) return false;
         
-        for (let len = 2; len <= 18; len++) {
-            this.switchData["LOW→MEDIUM"][len] = {
+        for (let len = 1; len <= 18; len++) {
+            this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
-            this.switchData["MEDIUM→LOW"][len] = {
+            this.patterns["MEDIUM→LOW"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
@@ -582,24 +685,37 @@ class ServerAI_LowMidSwitch {
         let tempPattern = null;
         let tempStreak = 0;
         
-        for (let i = 1; i < history.length; i++) {
-            const prevGroup = history[i-1].group;
-            const currGroup = history[i].group;
-            const patternKey = `${prevGroup}→${currGroup}`;
+        for (let i = 2; i < history.length; i++) {
+            const prevPrev = history[i-2].group;
+            const prev = history[i-1].group;
+            const curr = history[i].group;
             
-            if (patternKey === "LOW→MEDIUM" || patternKey === "MEDIUM→LOW") {
-                if (tempPattern === patternKey) {
-                    tempStreak++;
-                } else {
-                    if (tempPattern !== null && tempStreak >= 2 && tempStreak <= 18) {
-                        this.recordBreak(tempPattern, tempStreak, currGroup);
+            const isLowMid1 = (prevPrev === 'LOW' && prev === 'MEDIUM') || (prevPrev === 'MEDIUM' && prev === 'LOW');
+            
+            if (isLowMid1) {
+                const patternKey = `${prevPrev}→${prev}`;
+                const expectedCurr = (patternKey === "LOW→MEDIUM") ? 'LOW' : 'MEDIUM';
+                
+                if (curr === expectedCurr) {
+                    if (tempPattern === patternKey) {
+                        tempStreak++;
+                    } else {
+                        if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                            this.recordBreak(tempPattern, tempStreak, prev);
+                        }
+                        tempPattern = patternKey;
+                        tempStreak = 1;
                     }
-                    tempPattern = patternKey;
-                    tempStreak = 1;
+                } else {
+                    if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                        this.recordBreak(tempPattern, tempStreak, curr);
+                    }
+                    tempPattern = null;
+                    tempStreak = 0;
                 }
             } else {
-                if (tempPattern !== null && tempStreak >= 2 && tempStreak <= 18) {
-                    this.recordBreak(tempPattern, tempStreak, currGroup);
+                if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                    this.recordBreak(tempPattern, tempStreak, curr);
                 }
                 tempPattern = null;
                 tempStreak = 0;
@@ -609,134 +725,177 @@ class ServerAI_LowMidSwitch {
         return true;
     }
     
-    recordBreak(pattern, streakLength, nextGroup) {
-        if (streakLength >= 2 && streakLength <= 18) {
-            if (this.switchData[pattern] && this.switchData[pattern][streakLength]) {
-                this.switchData[pattern][streakLength].totalBreaks++;
-                this.switchData[pattern][streakLength].nextGroups[nextGroup]++;
+    recordBreak(patternKey, streakLength, nextGroup) {
+        if (streakLength >= 1 && streakLength <= 18) {
+            if (this.patterns[patternKey] && this.patterns[patternKey][streakLength]) {
+                this.patterns[patternKey][streakLength].totalBreaks++;
+                this.patterns[patternKey][streakLength].nextGroups[nextGroup]++;
             }
         }
     }
     
-    getMostlyGroupForSwitch(pattern, streakLength) {
-        if (streakLength < 2 || streakLength > 18) return null;
-        if (!this.switchData[pattern] || !this.switchData[pattern][streakLength]) return null;
+    getMostlyGroupForPattern(patternKey, streakLength) {
+        if (streakLength < 1 || streakLength > 18) return null;
+        if (!this.patterns[patternKey] || !this.patterns[patternKey][streakLength]) return null;
         
-        const data = this.switchData[pattern][streakLength];
+        const data = this.patterns[patternKey][streakLength];
         if (data.totalBreaks === 0) return null;
         
-        let maxCount = 0;
-        let mostlyGroup = null;
-        
-        const groups = ["LOW", "MEDIUM", "HIGH"];
-        for (let group of groups) {
+        let maxCount = 0, mostlyGroup = null;
+        for (let group of this.groups) {
             if (data.nextGroups[group] > maxCount) {
                 maxCount = data.nextGroups[group];
                 mostlyGroup = group;
             }
         }
-        
         return mostlyGroup;
     }
     
-    getConfidenceForSwitch(pattern, streakLength, predictedGroup) {
-        if (streakLength < 2 || streakLength > 18) return 30;
-        if (!this.switchData[pattern] || !this.switchData[pattern][streakLength]) return 30;
+    getConfidenceForPattern(patternKey, streakLength, predictedGroup) {
+        if (streakLength < 1 || streakLength > 18) return 30;
+        if (!this.patterns[patternKey] || !this.patterns[patternKey][streakLength]) return 30;
         
-        const data = this.switchData[pattern][streakLength];
+        const data = this.patterns[patternKey][streakLength];
         if (data.totalBreaks === 0) return 30;
         
         const count = data.nextGroups[predictedGroup] || 0;
         return Math.round((count / data.totalBreaks) * 100);
     }
     
-    getCurrentStreakFromMemory(patternKey) {
-        if (this.currentPattern === patternKey) {
-            return this.currentStreak;
+    getFallbackPrediction() {
+        let bestGroup = "HIGH";  // Default for Low-Mid is HIGH as per instruction
+        let bestCount = 0;
+        
+        for (let len = 1; len <= 18; len++) {
+            for (let pKey of ["LOW→MEDIUM", "MEDIUM→LOW"]) {
+                const data = this.patterns[pKey][len];
+                if (data && data.nextGroups) {
+                    for (let group of this.groups) {
+                        if (data.nextGroups[group] > bestCount) {
+                            bestCount = data.nextGroups[group];
+                            bestGroup = group;
+                        }
+                    }
+                }
+            }
         }
-        return 1;
+        
+        const confidence = bestCount > 0 ? Math.min(70, 30 + bestCount) : 40;
+        
+        return {
+            nextGroup: bestGroup,
+            confidence: confidence,
+            hasSpecificData: false,
+            reason: `Pattern not tracked, using most common outcome → ${bestGroup}`
+        };
     }
     
     predict(currentGroup, previousGroup) {
-        const patternKey = `${previousGroup}→${currentGroup}`;
+        const immediatePattern = `${previousGroup}→${currentGroup}`;
         
-        // Pattern mismatch
-        if (patternKey !== "LOW→MEDIUM" && patternKey !== "MEDIUM→LOW") {
+        if (immediatePattern === "LOW→MEDIUM" || immediatePattern === "MEDIUM→LOW") {
+            let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
+            streakLength = Math.min(18, Math.max(1, streakLength));
+            
+            let predictedGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            let confidence = 0;
+            let hasSpecificData = false;
+            
+            if (predictedGroup) {
+                hasSpecificData = true;
+                confidence = this.getConfidenceForPattern(immediatePattern, streakLength, predictedGroup);
+            } else {
+                predictedGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
+                if (predictedGroup) {
+                    confidence = this.getConfidenceForPattern(immediatePattern, 1, predictedGroup);
+                    hasSpecificData = true;
+                } else {
+                    predictedGroup = "HIGH";
+                    confidence = 40;
+                }
+            }
+            
+            const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
+            
             return {
                 model: this.name,
-                prediction: "DEFAULT",
-                pattern: patternKey,
+                prediction: predictionType,
+                pattern: immediatePattern,
                 currentGroup: currentGroup,
                 previousGroup: previousGroup,
-                currentStreak: 0,
-                nextGroup: "HIGH",
-                nextGroupConfidence: 30,
-                confidence: 30,
-                reason: "Pattern mismatch (not LOW→MEDIUM or MEDIUM→LOW), defaulting to HIGH",
+                currentStreak: streakLength,
+                nextGroup: predictedGroup,
+                nextGroupConfidence: confidence,
+                confidence: confidence,
+                breakProbability: 100 - confidence,
+                hasSpecificData: hasSpecificData,
+                reason: hasSpecificData 
+                    ? `After ${streakLength}x alternating ${immediatePattern}, mostly ${predictedGroup}`
+                    : `No data for ${streakLength}x alternating ${immediatePattern}, using default HIGH`,
                 accuracy: this.accuracy
             };
         }
         
-        let currentStreak = this.getCurrentStreakFromMemory(patternKey);
-        const streakLength = currentStreak;
-        
-        let predictedGroup = null;
-        let confidence = 0;
-        let hasSpecificData = false;
-        
-        if (streakLength >= 2 && streakLength <= 18) {
-            predictedGroup = this.getMostlyGroupForSwitch(patternKey, streakLength);
-            if (predictedGroup) {
-                hasSpecificData = true;
-                confidence = this.getConfidenceForSwitch(patternKey, streakLength, predictedGroup);
-            }
-        }
-        
-        // FALLBACK: If no specific data, use HIGH (as instructed)
-        if (!predictedGroup) {
-            predictedGroup = "HIGH";
-            confidence = 40;
-            hasSpecificData = false;
-        }
-        
-        const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
-        
+        const fallback = this.getFallbackPrediction();
         return {
             model: this.name,
-            prediction: predictionType,
-            pattern: patternKey,
+            prediction: "DEFAULT",
+            pattern: immediatePattern,
             currentGroup: currentGroup,
             previousGroup: previousGroup,
-            currentStreak: streakLength,
-            nextGroup: predictedGroup,
-            nextGroupConfidence: confidence,
-            confidence: confidence,
-            breakProbability: 100 - confidence,
-            hasSpecificData: hasSpecificData,
-            reason: hasSpecificData 
-                ? `After ${streakLength}x ${patternKey}, mostly ${predictedGroup} (${confidence}% confidence)`
-                : `No specific data for ${streakLength}x ${patternKey}, using HIGH as instructed (40% confidence)`,
+            currentStreak: 0,
+            nextGroup: fallback.nextGroup,
+            nextGroupConfidence: fallback.confidence,
+            confidence: fallback.confidence,
+            breakProbability: 100 - fallback.confidence,
+            hasSpecificData: false,
+            reason: fallback.reason,
             accuracy: this.accuracy
         };
     }
     
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
-        const isLowMidSwitch = (patternKey === "LOW→MEDIUM" || patternKey === "MEDIUM→LOW");
         
-        if (isLowMidSwitch) {
-            if (this.currentPattern === patternKey) {
+        if (this.currentPatternKey === "LOW→MEDIUM") {
+            const expectedNext = (this.currentStreak % 2 === 1) ? 'LOW' : 'MEDIUM';
+            if (resultGroup === expectedNext) {
                 this.currentStreak++;
             } else {
-                this.currentPattern = patternKey;
+                if (this.currentStreak >= 1 && this.currentStreak <= 18) {
+                    this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
+                }
+                if (patternKey === "LOW→MEDIUM" || patternKey === "MEDIUM→LOW") {
+                    this.currentPatternKey = patternKey;
+                    this.currentStreak = 1;
+                } else {
+                    this.currentPatternKey = null;
+                    this.currentStreak = 0;
+                }
+            }
+        } 
+        else if (this.currentPatternKey === "MEDIUM→LOW") {
+            const expectedNext = (this.currentStreak % 2 === 1) ? 'MEDIUM' : 'LOW';
+            if (resultGroup === expectedNext) {
+                this.currentStreak++;
+            } else {
+                if (this.currentStreak >= 1 && this.currentStreak <= 18) {
+                    this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
+                }
+                if (patternKey === "LOW→MEDIUM" || patternKey === "MEDIUM→LOW") {
+                    this.currentPatternKey = patternKey;
+                    this.currentStreak = 1;
+                } else {
+                    this.currentPatternKey = null;
+                    this.currentStreak = 0;
+                }
+            }
+        }
+        else {
+            if (patternKey === "LOW→MEDIUM" || patternKey === "MEDIUM→LOW") {
+                this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
             }
-        } else {
-            if (this.currentPattern !== null && this.currentStreak >= 2 && this.currentStreak <= 18) {
-                this.recordBreak(this.currentPattern, this.currentStreak, resultGroup);
-            }
-            this.currentPattern = null;
-            this.currentStreak = 0;
         }
     }
     
@@ -750,8 +909,8 @@ class ServerAI_LowMidSwitch {
     
     loadFromData(data) {
         if (data) {
-            this.switchData = data.switchData || this.switchData;
-            this.currentPattern = data.currentPattern || null;
+            this.patterns = data.patterns || this.patterns;
+            this.currentPatternKey = data.currentPatternKey || null;
             this.currentStreak = data.currentStreak || 0;
             this.totalPredictions = data.totalPredictions || 0;
             this.correctPredictions = data.correctPredictions || 0;
@@ -761,8 +920,8 @@ class ServerAI_LowMidSwitch {
     
     exportForServer() {
         return {
-            switchData: this.switchData,
-            currentPattern: this.currentPattern,
+            patterns: this.patterns,
+            currentPatternKey: this.currentPatternKey,
             currentStreak: this.currentStreak,
             totalPredictions: this.totalPredictions,
             correctPredictions: this.correctPredictions,
@@ -773,39 +932,38 @@ class ServerAI_LowMidSwitch {
 
 
 /**
- * AI-D: Mid-High Switch Detector (Server Version)
- * EXACT MATCH with client ai-mid-high-switch.js
+ * AI-D: Mid-High Switch Detector (REFACTORED)
  * 
- * ONLY tracks: MEDIUM→HIGH and HIGH→MEDIUM
- * If no specific data → predicts LOW
+ * NEW LOGIC:
+ * - Tracks alternating patterns: MEDIUM→HIGH→MEDIUM→HIGH... and HIGH→MEDIUM→HIGH→MEDIUM...
+ * - Streak length 1 to 18 (number of alternations)
+ * - Learns what comes AFTER the alternating pattern
  */
 class ServerAI_MidHighSwitch {
     constructor() {
         this.name = "AI_MidHighSwitch";
-        this.patterns = ['MEDIUM→HIGH', 'HIGH→MEDIUM'];
+        this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        this.switchData = {
+        // Two patterns to track
+        this.patterns = {
             "MEDIUM→HIGH": {},
             "HIGH→MEDIUM": {}
         };
         
-        for (let len = 2; len <= 18; len++) {
-            this.switchData["MEDIUM→HIGH"][len] = {
+        // Data structure for each pattern and streak length (1 to 18)
+        for (let len = 1; len <= 18; len++) {
+            this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
-            this.switchData["HIGH→MEDIUM"][len] = {
+            this.patterns["HIGH→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
         
-        this.globalFallback = {
-            totalBreaks: 0,
-            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
-        };
-        
-        this.currentPattern = null;
+        // For tracking current alternating streak
+        this.currentPatternKey = null;
         this.currentStreak = 0;
         
         this.totalPredictions = 0;
@@ -813,45 +971,60 @@ class ServerAI_MidHighSwitch {
         this.accuracy = 0;
     }
     
+    init() {
+        console.log('🤖 AI-D (Mid-High Switch) REFACTORED - Alternating Pattern Tracker');
+        console.log('   ✅ Tracks: MEDIUM→HIGH→MEDIUM→HIGH... and HIGH→MEDIUM→HIGH→MEDIUM...');
+        console.log('   ✅ Streak length 1 to 18');
+    }
+    
     train(history) {
         if (!history || history.length < 3) return false;
         
-        for (let len = 2; len <= 18; len++) {
-            this.switchData["MEDIUM→HIGH"][len] = {
+        for (let len = 1; len <= 18; len++) {
+            this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
-            this.switchData["HIGH→MEDIUM"][len] = {
+            this.patterns["HIGH→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
-        this.globalFallback = {
-            totalBreaks: 0,
-            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
-        };
         
         let tempPattern = null;
         let tempStreak = 0;
         
-        for (let i = 1; i < history.length; i++) {
-            const prevGroup = history[i-1].group;
-            const currGroup = history[i].group;
-            const patternKey = `${prevGroup}→${currGroup}`;
+        for (let i = 2; i < history.length; i++) {
+            const prevPrev = history[i-2].group;
+            const prev = history[i-1].group;
+            const curr = history[i].group;
             
-            if (patternKey === "MEDIUM→HIGH" || patternKey === "HIGH→MEDIUM") {
-                if (tempPattern === patternKey) {
-                    tempStreak++;
-                } else {
-                    if (tempPattern !== null && tempStreak >= 2 && tempStreak <= 18) {
-                        this.recordBreak(tempPattern, tempStreak, currGroup);
+            const isMidHigh1 = (prevPrev === 'MEDIUM' && prev === 'HIGH') || (prevPrev === 'HIGH' && prev === 'MEDIUM');
+            
+            if (isMidHigh1) {
+                const patternKey = `${prevPrev}→${prev}`;
+                const expectedCurr = (patternKey === "MEDIUM→HIGH") ? 'MEDIUM' : 'HIGH';
+                
+                if (curr === expectedCurr) {
+                    if (tempPattern === patternKey) {
+                        tempStreak++;
+                    } else {
+                        if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                            this.recordBreak(tempPattern, tempStreak, prev);
+                        }
+                        tempPattern = patternKey;
+                        tempStreak = 1;
                     }
-                    tempPattern = patternKey;
-                    tempStreak = 1;
+                } else {
+                    if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                        this.recordBreak(tempPattern, tempStreak, curr);
+                    }
+                    tempPattern = null;
+                    tempStreak = 0;
                 }
             } else {
-                if (tempPattern !== null && tempStreak >= 2 && tempStreak <= 18) {
-                    this.recordBreak(tempPattern, tempStreak, currGroup);
+                if (tempPattern !== null && tempStreak >= 1 && tempStreak <= 18) {
+                    this.recordBreak(tempPattern, tempStreak, curr);
                 }
                 tempPattern = null;
                 tempStreak = 0;
@@ -861,136 +1034,177 @@ class ServerAI_MidHighSwitch {
         return true;
     }
     
-    recordBreak(pattern, streakLength, nextGroup) {
-        if (streakLength >= 2 && streakLength <= 18) {
-            if (this.switchData[pattern] && this.switchData[pattern][streakLength]) {
-                this.switchData[pattern][streakLength].totalBreaks++;
-                this.switchData[pattern][streakLength].nextGroups[nextGroup]++;
+    recordBreak(patternKey, streakLength, nextGroup) {
+        if (streakLength >= 1 && streakLength <= 18) {
+            if (this.patterns[patternKey] && this.patterns[patternKey][streakLength]) {
+                this.patterns[patternKey][streakLength].totalBreaks++;
+                this.patterns[patternKey][streakLength].nextGroups[nextGroup]++;
             }
         }
-        this.globalFallback.totalBreaks++;
-        this.globalFallback.nextGroups[nextGroup]++;
     }
     
-    getMostlyGroupForSwitch(pattern, streakLength) {
-        if (streakLength < 2 || streakLength > 18) return null;
-        if (!this.switchData[pattern] || !this.switchData[pattern][streakLength]) return null;
+    getMostlyGroupForPattern(patternKey, streakLength) {
+        if (streakLength < 1 || streakLength > 18) return null;
+        if (!this.patterns[patternKey] || !this.patterns[patternKey][streakLength]) return null;
         
-        const data = this.switchData[pattern][streakLength];
+        const data = this.patterns[patternKey][streakLength];
         if (data.totalBreaks === 0) return null;
         
-        let maxCount = 0;
-        let mostlyGroup = null;
-        
-        const groups = ["LOW", "MEDIUM", "HIGH"];
-        for (let group of groups) {
+        let maxCount = 0, mostlyGroup = null;
+        for (let group of this.groups) {
             if (data.nextGroups[group] > maxCount) {
                 maxCount = data.nextGroups[group];
                 mostlyGroup = group;
             }
         }
-        
         return mostlyGroup;
     }
     
-    getConfidenceForSwitch(pattern, streakLength, predictedGroup) {
-        if (streakLength < 2 || streakLength > 18) return 30;
-        if (!this.switchData[pattern] || !this.switchData[pattern][streakLength]) return 30;
+    getConfidenceForPattern(patternKey, streakLength, predictedGroup) {
+        if (streakLength < 1 || streakLength > 18) return 30;
+        if (!this.patterns[patternKey] || !this.patterns[patternKey][streakLength]) return 30;
         
-        const data = this.switchData[pattern][streakLength];
+        const data = this.patterns[patternKey][streakLength];
         if (data.totalBreaks === 0) return 30;
         
         const count = data.nextGroups[predictedGroup] || 0;
         return Math.round((count / data.totalBreaks) * 100);
     }
     
-    getCurrentStreakFromMemory(patternKey) {
-        if (this.currentPattern === patternKey) {
-            return this.currentStreak;
+    getFallbackPrediction() {
+        let bestGroup = "LOW";  // Default for Mid-High is LOW as per instruction
+        let bestCount = 0;
+        
+        for (let len = 1; len <= 18; len++) {
+            for (let pKey of ["MEDIUM→HIGH", "HIGH→MEDIUM"]) {
+                const data = this.patterns[pKey][len];
+                if (data && data.nextGroups) {
+                    for (let group of this.groups) {
+                        if (data.nextGroups[group] > bestCount) {
+                            bestCount = data.nextGroups[group];
+                            bestGroup = group;
+                        }
+                    }
+                }
+            }
         }
-        return 1;
+        
+        const confidence = bestCount > 0 ? Math.min(70, 30 + bestCount) : 40;
+        
+        return {
+            nextGroup: bestGroup,
+            confidence: confidence,
+            hasSpecificData: false,
+            reason: `Pattern not tracked, using most common outcome → ${bestGroup}`
+        };
     }
     
     predict(currentGroup, previousGroup) {
-        const patternKey = `${previousGroup}→${currentGroup}`;
+        const immediatePattern = `${previousGroup}→${currentGroup}`;
         
-        // Pattern mismatch
-        if (patternKey !== "MEDIUM→HIGH" && patternKey !== "HIGH→MEDIUM") {
+        if (immediatePattern === "MEDIUM→HIGH" || immediatePattern === "HIGH→MEDIUM") {
+            let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
+            streakLength = Math.min(18, Math.max(1, streakLength));
+            
+            let predictedGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            let confidence = 0;
+            let hasSpecificData = false;
+            
+            if (predictedGroup) {
+                hasSpecificData = true;
+                confidence = this.getConfidenceForPattern(immediatePattern, streakLength, predictedGroup);
+            } else {
+                predictedGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
+                if (predictedGroup) {
+                    confidence = this.getConfidenceForPattern(immediatePattern, 1, predictedGroup);
+                    hasSpecificData = true;
+                } else {
+                    predictedGroup = "LOW";
+                    confidence = 40;
+                }
+            }
+            
+            const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
+            
             return {
                 model: this.name,
-                prediction: "DEFAULT",
-                pattern: patternKey,
+                prediction: predictionType,
+                pattern: immediatePattern,
                 currentGroup: currentGroup,
                 previousGroup: previousGroup,
-                currentStreak: 0,
-                nextGroup: "MEDIUM",
-                nextGroupConfidence: 30,
-                confidence: 30,
-                reason: "Pattern mismatch (not MEDIUM→HIGH or HIGH→MEDIUM), defaulting to MEDIUM",
+                currentStreak: streakLength,
+                nextGroup: predictedGroup,
+                nextGroupConfidence: confidence,
+                confidence: confidence,
+                breakProbability: 100 - confidence,
+                hasSpecificData: hasSpecificData,
+                reason: hasSpecificData 
+                    ? `After ${streakLength}x alternating ${immediatePattern}, mostly ${predictedGroup}`
+                    : `No data for ${streakLength}x alternating ${immediatePattern}, using default LOW`,
                 accuracy: this.accuracy
             };
         }
         
-        let currentStreak = this.getCurrentStreakFromMemory(patternKey);
-        const streakLength = currentStreak;
-        
-        let predictedGroup = null;
-        let confidence = 0;
-        let hasSpecificData = false;
-        
-        if (streakLength >= 2 && streakLength <= 18) {
-            predictedGroup = this.getMostlyGroupForSwitch(patternKey, streakLength);
-            if (predictedGroup) {
-                hasSpecificData = true;
-                confidence = this.getConfidenceForSwitch(patternKey, streakLength, predictedGroup);
-            }
-        }
-        
-        // FALLBACK: If no specific data, use LOW (as instructed)
-        if (!predictedGroup) {
-            predictedGroup = "LOW";
-            confidence = 40;
-            hasSpecificData = false;
-        }
-        
-        const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
-        
+        const fallback = this.getFallbackPrediction();
         return {
             model: this.name,
-            prediction: predictionType,
-            pattern: patternKey,
+            prediction: "DEFAULT",
+            pattern: immediatePattern,
             currentGroup: currentGroup,
             previousGroup: previousGroup,
-            currentStreak: streakLength,
-            nextGroup: predictedGroup,
-            nextGroupConfidence: confidence,
-            confidence: confidence,
-            breakProbability: 100 - confidence,
-            hasSpecificData: hasSpecificData,
-            reason: hasSpecificData 
-                ? `After ${streakLength}x ${patternKey}, mostly ${predictedGroup} (${confidence}% confidence)`
-                : `No specific data for ${streakLength}x ${patternKey}, using LOW as instructed (40% confidence)`,
+            currentStreak: 0,
+            nextGroup: fallback.nextGroup,
+            nextGroupConfidence: fallback.confidence,
+            confidence: fallback.confidence,
+            breakProbability: 100 - fallback.confidence,
+            hasSpecificData: false,
+            reason: fallback.reason,
             accuracy: this.accuracy
         };
     }
     
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
-        const isMidHighSwitch = (patternKey === "MEDIUM→HIGH" || patternKey === "HIGH→MEDIUM");
         
-        if (isMidHighSwitch) {
-            if (this.currentPattern === patternKey) {
+        if (this.currentPatternKey === "MEDIUM→HIGH") {
+            const expectedNext = (this.currentStreak % 2 === 1) ? 'MEDIUM' : 'HIGH';
+            if (resultGroup === expectedNext) {
                 this.currentStreak++;
             } else {
-                this.currentPattern = patternKey;
+                if (this.currentStreak >= 1 && this.currentStreak <= 18) {
+                    this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
+                }
+                if (patternKey === "MEDIUM→HIGH" || patternKey === "HIGH→MEDIUM") {
+                    this.currentPatternKey = patternKey;
+                    this.currentStreak = 1;
+                } else {
+                    this.currentPatternKey = null;
+                    this.currentStreak = 0;
+                }
+            }
+        } 
+        else if (this.currentPatternKey === "HIGH→MEDIUM") {
+            const expectedNext = (this.currentStreak % 2 === 1) ? 'HIGH' : 'MEDIUM';
+            if (resultGroup === expectedNext) {
+                this.currentStreak++;
+            } else {
+                if (this.currentStreak >= 1 && this.currentStreak <= 18) {
+                    this.recordBreak(this.currentPatternKey, this.currentStreak, resultGroup);
+                }
+                if (patternKey === "MEDIUM→HIGH" || patternKey === "HIGH→MEDIUM") {
+                    this.currentPatternKey = patternKey;
+                    this.currentStreak = 1;
+                } else {
+                    this.currentPatternKey = null;
+                    this.currentStreak = 0;
+                }
+            }
+        }
+        else {
+            if (patternKey === "MEDIUM→HIGH" || patternKey === "HIGH→MEDIUM") {
+                this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
             }
-        } else {
-            if (this.currentPattern !== null && this.currentStreak >= 2 && this.currentStreak <= 18) {
-                this.recordBreak(this.currentPattern, this.currentStreak, resultGroup);
-            }
-            this.currentPattern = null;
-            this.currentStreak = 0;
         }
     }
     
@@ -1004,9 +1218,8 @@ class ServerAI_MidHighSwitch {
     
     loadFromData(data) {
         if (data) {
-            this.switchData = data.switchData || this.switchData;
-            this.globalFallback = data.globalFallback || this.globalFallback;
-            this.currentPattern = data.currentPattern || null;
+            this.patterns = data.patterns || this.patterns;
+            this.currentPatternKey = data.currentPatternKey || null;
             this.currentStreak = data.currentStreak || 0;
             this.totalPredictions = data.totalPredictions || 0;
             this.correctPredictions = data.correctPredictions || 0;
@@ -1016,9 +1229,8 @@ class ServerAI_MidHighSwitch {
     
     exportForServer() {
         return {
-            switchData: this.switchData,
-            globalFallback: this.globalFallback,
-            currentPattern: this.currentPattern,
+            patterns: this.patterns,
+            currentPatternKey: this.currentPatternKey,
             currentStreak: this.currentStreak,
             totalPredictions: this.totalPredictions,
             correctPredictions: this.correctPredictions,
@@ -1029,8 +1241,7 @@ class ServerAI_MidHighSwitch {
 
 
 /**
- * Server Ensemble Voter (Server Version)
- * EXACT MATCH with client ensemble-v4.js
+ * Server Ensemble Voter (UNCHANGED)
  * Real-time weight updates based on AI performance
  */
 class ServerEnsembleVoter {
