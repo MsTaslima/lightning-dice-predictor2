@@ -1,10 +1,14 @@
 // ============================================================
-// COMPLETE server.js (FULLY FIXED - Pattern Display Issue Resolved)
+// COMPLETE server.js (FULLY FIXED + TELEGRAM NOTIFICATION)
+// Four AI Pattern Recognition System + Telegram Alert (4 consecutive misses)
 // ============================================================
 
 // Fix memory leak warnings
 require('events').EventEmitter.defaultMaxListeners = 20;
 process.setMaxListeners(20);
+
+// Load environment variables for Telegram
+require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
@@ -25,6 +29,46 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ============ TELEGRAM NOTIFICATION STATE ============
+let ensembleMissCount = 0;
+let ensembleAlertTriggered = false;
+
+// ============ TELEGRAM FUNCTION ============
+async function sendTelegramNotification(missCount, actualGroup, predictedGroup, nextPrediction) {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    
+    if (!botToken || !chatId) {
+        console.log('⚠️ Telegram token or chat ID not set. Skipping notification.');
+        return;
+    }
+    
+    const message = `⚡ LIGHTNING DICE ALERT ⚡
+
+🎯 ENSEMBLE has been WRONG for ${missCount} consecutive rounds!
+
+📊 Current Round:
+• Predicted: ${predictedGroup}
+• Actual: ${actualGroup}
+
+🔮 NEXT ROUND PREDICTION:
+🎲 ${nextPrediction.ensemble} (${nextPrediction.ensembleConfidence}% confidence)
+
+📎 Live: https://web-production-ebac2.up.railway.app`;
+
+    try {
+        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+        await axios.post(url, {
+            chat_id: chatId,
+            text: message,
+            parse_mode: 'HTML'
+        });
+        console.log(`✅ Telegram notification sent (${missCount} consecutive misses)`);
+    } catch (error) {
+        console.error('❌ Failed to send Telegram notification:', error.message);
+    }
+}
 
 // Ensure database directory exists
 const dbDir = path.join(__dirname, 'data');
@@ -283,7 +327,6 @@ function getResultsData(limit = 100) {
                     diceValues: row.diceValues,
                     timestamp: row.timestamp
                 }));
-                // Sort by timestamp descending to ensure correct order
                 formatted.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 console.log(`✅ getResultsData returning ${formatted.length} results`);
                 resolve(formatted);
@@ -586,6 +629,38 @@ async function updatePredictionWithResult(resultId, actualGroup) {
     console.log(`   AI-D: ${prediction.ai_mid_high_group} → ${correct.mid_high ? '✓' : '✗'}`);
     console.log(`   ENSEMBLE: ${prediction.ensemble_group} → ${correct.ensemble ? '✓' : '✗'}`);
     
+    // ============ TELEGRAM NOTIFICATION LOGIC ============
+    // Get next round prediction for notification
+    const nextRoundPrediction = await getCurrentPredictionData();
+    
+    const ensembleWasCorrect = (correct.ensemble === 1);
+    
+    if (ensembleWasCorrect) {
+        // Reset counter when correct
+        if (ensembleAlertTriggered) {
+            console.log('🔔 ENSEMBLE is correct again. Telegram alerts will stop.');
+        }
+        ensembleMissCount = 0;
+        ensembleAlertTriggered = false;
+    } else {
+        // Miss: increment counter
+        ensembleMissCount++;
+        console.log(`📉 ENSEMBLE miss #${ensembleMissCount}`);
+        
+        // Check if we need to send alert (4 or more consecutive misses)
+        if (ensembleMissCount >= 4) {
+            // Send Telegram notification
+            await sendTelegramNotification(
+                ensembleMissCount,
+                actualGroup,
+                prediction.ensemble_group,
+                nextRoundPrediction
+            );
+            ensembleAlertTriggered = true;
+        }
+    }
+    // ============ END TELEGRAM LOGIC ============
+    
     return new Promise((resolve) => {
         db.run(`UPDATE predictions SET
                 actual_group = ?,
@@ -642,7 +717,6 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
         getAIStatsData()
     ]);
     
-    // Ensure results are sorted by timestamp descending
     results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
     console.log(`📊 Data counts - Results: ${results.length}, Predictions: ${predictions.length}`);
@@ -840,7 +914,6 @@ app.get('/api/all-data', async (req, res) => {
             getCurrentPredictionData()
         ]);
         
-        // Ensure results are sorted
         results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
         res.json({
@@ -1024,6 +1097,7 @@ collectData();
 console.log('📊 Background data collection started (every 3 seconds)');
 console.log('🤖 Server-side AI prediction engine active');
 console.log('🔌 WebSocket server ready for real-time updates');
+console.log('🤖 Telegram notification active (triggers after 4 consecutive Ensemble misses)');
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
