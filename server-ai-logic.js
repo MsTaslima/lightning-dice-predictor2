@@ -810,7 +810,7 @@ class ServerAI_ExtremeSwitch {
 module.exports = { ServerAI_ExtremeSwitch };
 
 /**
- * AI-C: Low-Mid Switch Detector
+ * AI-C: Low-Mid Switch Detector (UPDATED WITH DYNAMIC SCORE SYSTEM)
  * Tracks alternating patterns: LOW↔MEDIUM
  */
 class ServerAI_LowMidSwitch {
@@ -818,12 +818,34 @@ class ServerAI_LowMidSwitch {
         this.name = "AI_LowMidSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
+        // Pattern data storage
         this.patterns = {
             "LOW→MEDIUM": {},
             "MEDIUM→LOW": {}
         };
         
+        // SCORE SYSTEM - প্রতিটি streak length এর জন্য আলাদা স্কোর
+        this.patternScores = {
+            "LOW→MEDIUM": {},
+            "MEDIUM→LOW": {}
+        };
+        
+        // Fallback scores for when pattern doesn't match
+        this.fallbackScores = {
+            "LOW": 40,
+            "MEDIUM": 40,
+            "HIGH": 40
+        };
+        
+        // Global fallback stats
+        this.globalFallbackStats = {
+            totalBreaks: 0,
+            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
+        };
+        
+        // Initialize all streak lengths
         for (let len = 1; len <= 18; len++) {
+            // Data storage
             this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
@@ -831,6 +853,18 @@ class ServerAI_LowMidSwitch {
             this.patterns["MEDIUM→LOW"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
+            };
+            
+            // SCORE storage - প্রতিটি streak length এর জন্য আলাদা স্কোর (starting from 40)
+            this.patternScores["LOW→MEDIUM"][len] = {
+                "LOW": 40,
+                "MEDIUM": 40,
+                "HIGH": 40
+            };
+            this.patternScores["MEDIUM→LOW"][len] = {
+                "LOW": 40,
+                "MEDIUM": 40,
+                "HIGH": 40
             };
         }
         
@@ -840,15 +874,18 @@ class ServerAI_LowMidSwitch {
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
+        
+        this.lastPredictionInfo = null;
     }
     
     init() {
-        console.log('🤖 AI-C (Low-Mid Switch) initialized');
+        console.log('🤖 AI-C (Low-Mid Switch) initialized with Dynamic Score System');
     }
     
     train(history) {
         if (!history || history.length < 3) return false;
         
+        // Reset data
         for (let len = 1; len <= 18; len++) {
             this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
@@ -859,6 +896,11 @@ class ServerAI_LowMidSwitch {
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
+        
+        this.globalFallbackStats = {
+            totalBreaks: 0,
+            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
+        };
         
         let tempPattern = null;
         let tempStreak = 0;
@@ -909,6 +951,8 @@ class ServerAI_LowMidSwitch {
                 this.patterns[patternKey][streakLength].nextGroups[nextGroup]++;
             }
         }
+        this.globalFallbackStats.totalBreaks++;
+        this.globalFallbackStats.nextGroups[nextGroup]++;
     }
     
     getMostlyGroupForPattern(patternKey, streakLength) {
@@ -939,42 +983,90 @@ class ServerAI_LowMidSwitch {
         return Math.round((count / data.totalBreaks) * 100);
     }
     
-    /**
-     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
-     */
-    getFallbackPrediction() {
+    getMostCommonGroupFromGlobal() {
         let bestGroup = "HIGH";
         let bestCount = 0;
-        let totalBreaks = 0;
         
-        for (let len = 1; len <= 18; len++) {
-            for (let pKey of ["LOW→MEDIUM", "MEDIUM→LOW"]) {
-                const data = this.patterns[pKey][len];
-                if (data && data.nextGroups) {
-                    for (let group of this.groups) {
-                        const count = data.nextGroups[group] || 0;
-                        totalBreaks += count;
-                        if (count > bestCount) {
-                            bestCount = count;
-                            bestGroup = group;
-                        }
-                    }
+        for (let group of this.groups) {
+            const count = this.globalFallbackStats.nextGroups[group] || 0;
+            if (count > bestCount) {
+                bestCount = count;
+                bestGroup = group;
+            }
+        }
+        return bestGroup;
+    }
+    
+    decidePredictionWithScores(mostCommonGroup, scores, streakLength, patternKey) {
+        for (let group of this.groups) {
+            if (group !== mostCommonGroup) {
+                const scoreDiff = scores[group] - scores[mostCommonGroup];
+                if (scoreDiff >= 20) {
+                    return group;
                 }
             }
         }
+        return mostCommonGroup;
+    }
+    
+    updateScores(patternKey, streakLength, predictedGroup, actualGroup) {
+        const scores = this.patternScores[patternKey][streakLength];
         
-        let confidence = 40;
-        if (totalBreaks > 0) {
-            const percentage = (bestCount / totalBreaks) * 100;
-            confidence = Math.min(70, Math.max(40, Math.round(percentage)));
+        if (predictedGroup !== actualGroup) {
+            scores[predictedGroup] = Math.max(0, scores[predictedGroup] - 20);
+        }
+        scores[actualGroup] = Math.min(100, scores[actualGroup] + 20);
+    }
+    
+    getFallbackPredictionWithScores() {
+        const mostCommonGroup = this.getMostCommonGroupFromGlobal();
+        
+        if (this.globalFallbackStats.totalBreaks === 0) {
+            return {
+                nextGroup: "HIGH",
+                confidence: 35,
+                hasSpecificData: false,
+                reason: "Fallback: No global data available, default HIGH"
+            };
         }
         
+        const predictedGroup = this.decidePredictionWithScores(
+            mostCommonGroup, 
+            this.fallbackScores, 
+            0, 
+            "FALLBACK"
+        );
+        
+        const count = this.globalFallbackStats.nextGroups[predictedGroup] || 0;
+        const total = this.globalFallbackStats.totalBreaks;
+        const confidence = total > 0 ? Math.round((count / total) * 100) : 35;
+        
         return {
-            nextGroup: bestGroup,
-            confidence: confidence,
+            nextGroup: predictedGroup,
+            confidence: Math.min(70, Math.max(35, confidence)),
             hasSpecificData: false,
-            reason: `Fallback: Most common outcome from ${totalBreaks} breaks is ${bestGroup} (${confidence}%)`
+            reason: `Fallback: Most common ${mostCommonGroup}, score-adjusted to ${predictedGroup}`
         };
+    }
+    
+    updateFallbackScores(predictedGroup, actualGroup) {
+        if (predictedGroup !== actualGroup) {
+            this.fallbackScores[predictedGroup] = Math.max(0, this.fallbackScores[predictedGroup] - 20);
+        }
+        this.fallbackScores[actualGroup] = Math.min(100, this.fallbackScores[actualGroup] + 20);
+    }
+    
+    getHighestScoreGroup(scores) {
+        let bestGroup = "HIGH";
+        let bestScore = -1;
+        
+        for (let group of this.groups) {
+            if (scores[group] > bestScore) {
+                bestScore = scores[group];
+                bestGroup = group;
+            }
+        }
+        return bestGroup;
     }
     
     predict(currentGroup, previousGroup) {
@@ -984,25 +1076,43 @@ class ServerAI_LowMidSwitch {
             let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
             streakLength = Math.min(18, Math.max(1, streakLength));
             
-            let predictedGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            let mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            const scores = this.patternScores[immediatePattern][streakLength];
+            
+            let predictedGroup = null;
             let confidence = 0;
             let hasSpecificData = false;
             
-            if (predictedGroup) {
+            if (mostCommonGroup) {
                 hasSpecificData = true;
-                confidence = this.getConfidenceForPattern(immediatePattern, streakLength, predictedGroup);
+                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                const data = this.patterns[immediatePattern][streakLength];
+                const count = data.nextGroups[predictedGroup] || 0;
+                confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
             } else {
-                predictedGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
-                if (predictedGroup) {
-                    confidence = this.getConfidenceForPattern(immediatePattern, 1, predictedGroup);
+                mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
+                if (mostCommonGroup) {
+                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                    const data = this.patterns[immediatePattern][1];
+                    const count = data.nextGroups[predictedGroup] || 0;
+                    confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
                     hasSpecificData = true;
                 } else {
-                    predictedGroup = "HIGH";
+                    predictedGroup = this.getHighestScoreGroup(scores);
                     confidence = 40;
+                    hasSpecificData = false;
                 }
             }
             
             const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
+            
+            this.lastPredictionInfo = {
+                patternKey: immediatePattern,
+                streakLength: streakLength,
+                predictedGroup: predictedGroup,
+                usedScores: true,
+                isFallback: false
+            };
             
             return {
                 model: this.name,
@@ -1016,14 +1126,22 @@ class ServerAI_LowMidSwitch {
                 confidence: confidence,
                 breakProbability: 100 - confidence,
                 hasSpecificData: hasSpecificData,
-                reason: hasSpecificData 
-                    ? `After ${streakLength}x alternating ${immediatePattern}, mostly ${predictedGroup}`
-                    : `No data for ${streakLength}x alternating ${immediatePattern}, using default HIGH`,
-                accuracy: this.accuracy
+                reason: `After ${streakLength}x alternating ${immediatePattern}, predicting ${predictedGroup}`,
+                accuracy: this.accuracy,
+                scores: scores
             };
         }
         
-        const fallback = this.getFallbackPrediction();
+        const fallbackResult = this.getFallbackPredictionWithScores();
+        
+        this.lastPredictionInfo = {
+            patternKey: "FALLBACK",
+            streakLength: 0,
+            predictedGroup: fallbackResult.nextGroup,
+            usedScores: true,
+            isFallback: true
+        };
+        
         return {
             model: this.name,
             prediction: "FALLBACK",
@@ -1031,18 +1149,32 @@ class ServerAI_LowMidSwitch {
             currentGroup: currentGroup,
             previousGroup: previousGroup,
             currentStreak: 0,
-            nextGroup: fallback.nextGroup,
-            nextGroupConfidence: fallback.confidence,
-            confidence: fallback.confidence,
-            breakProbability: 100 - fallback.confidence,
+            nextGroup: fallbackResult.nextGroup,
+            nextGroupConfidence: fallbackResult.confidence,
+            confidence: fallbackResult.confidence,
+            breakProbability: 100 - fallbackResult.confidence,
             hasSpecificData: false,
-            reason: fallback.reason,
-            accuracy: this.accuracy
+            reason: fallbackResult.reason,
+            accuracy: this.accuracy,
+            fallbackScores: this.fallbackScores
         };
     }
     
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
+        
+        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores) {
+            if (this.lastPredictionInfo.isFallback) {
+                this.updateFallbackScores(this.lastPredictionInfo.predictedGroup, resultGroup);
+            } else {
+                this.updateScores(
+                    this.lastPredictionInfo.patternKey,
+                    this.lastPredictionInfo.streakLength,
+                    this.lastPredictionInfo.predictedGroup,
+                    resultGroup
+                );
+            }
+        }
         
         if (this.currentPatternKey === "LOW→MEDIUM") {
             const expectedNext = (this.currentStreak % 2 === 1) ? 'LOW' : 'MEDIUM';
@@ -1082,8 +1214,13 @@ class ServerAI_LowMidSwitch {
             if (patternKey === "LOW→MEDIUM" || patternKey === "MEDIUM→LOW") {
                 this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
+            } else {
+                this.globalFallbackStats.totalBreaks++;
+                this.globalFallbackStats.nextGroups[resultGroup]++;
             }
         }
+        
+        this.lastPredictionInfo = null;
     }
     
     recordPredictionResult(correct) {
@@ -1097,6 +1234,9 @@ class ServerAI_LowMidSwitch {
     loadFromData(data) {
         if (data) {
             this.patterns = data.patterns || this.patterns;
+            this.patternScores = data.patternScores || this.patternScores;
+            this.fallbackScores = data.fallbackScores || this.fallbackScores;
+            this.globalFallbackStats = data.globalFallbackStats || this.globalFallbackStats;
             this.currentPatternKey = data.currentPatternKey || null;
             this.currentStreak = data.currentStreak || 0;
             this.totalPredictions = data.totalPredictions || 0;
@@ -1108,6 +1248,9 @@ class ServerAI_LowMidSwitch {
     exportForServer() {
         return {
             patterns: this.patterns,
+            patternScores: this.patternScores,
+            fallbackScores: this.fallbackScores,
+            globalFallbackStats: this.globalFallbackStats,
             currentPatternKey: this.currentPatternKey,
             currentStreak: this.currentStreak,
             totalPredictions: this.totalPredictions,
@@ -1119,7 +1262,7 @@ class ServerAI_LowMidSwitch {
 
 
 /**
- * AI-D: Mid-High Switch Detector
+ * AI-D: Mid-High Switch Detector (UPDATED WITH DYNAMIC SCORE SYSTEM)
  * Tracks alternating patterns: MEDIUM↔HIGH
  */
 class ServerAI_MidHighSwitch {
@@ -1127,12 +1270,34 @@ class ServerAI_MidHighSwitch {
         this.name = "AI_MidHighSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
+        // Pattern data storage
         this.patterns = {
             "MEDIUM→HIGH": {},
             "HIGH→MEDIUM": {}
         };
         
+        // SCORE SYSTEM - প্রতিটি streak length এর জন্য আলাদা স্কোর
+        this.patternScores = {
+            "MEDIUM→HIGH": {},
+            "HIGH→MEDIUM": {}
+        };
+        
+        // Fallback scores for when pattern doesn't match
+        this.fallbackScores = {
+            "LOW": 40,
+            "MEDIUM": 40,
+            "HIGH": 40
+        };
+        
+        // Global fallback stats
+        this.globalFallbackStats = {
+            totalBreaks: 0,
+            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
+        };
+        
+        // Initialize all streak lengths
         for (let len = 1; len <= 18; len++) {
+            // Data storage
             this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
@@ -1140,6 +1305,18 @@ class ServerAI_MidHighSwitch {
             this.patterns["HIGH→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
+            };
+            
+            // SCORE storage - প্রতিটি streak length এর জন্য আলাদা স্কোর (starting from 40)
+            this.patternScores["MEDIUM→HIGH"][len] = {
+                "LOW": 40,
+                "MEDIUM": 40,
+                "HIGH": 40
+            };
+            this.patternScores["HIGH→MEDIUM"][len] = {
+                "LOW": 40,
+                "MEDIUM": 40,
+                "HIGH": 40
             };
         }
         
@@ -1149,15 +1326,18 @@ class ServerAI_MidHighSwitch {
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
+        
+        this.lastPredictionInfo = null;
     }
     
     init() {
-        console.log('🤖 AI-D (Mid-High Switch) initialized');
+        console.log('🤖 AI-D (Mid-High Switch) initialized with Dynamic Score System');
     }
     
     train(history) {
         if (!history || history.length < 3) return false;
         
+        // Reset data
         for (let len = 1; len <= 18; len++) {
             this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
@@ -1168,6 +1348,11 @@ class ServerAI_MidHighSwitch {
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
         }
+        
+        this.globalFallbackStats = {
+            totalBreaks: 0,
+            nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
+        };
         
         let tempPattern = null;
         let tempStreak = 0;
@@ -1218,6 +1403,8 @@ class ServerAI_MidHighSwitch {
                 this.patterns[patternKey][streakLength].nextGroups[nextGroup]++;
             }
         }
+        this.globalFallbackStats.totalBreaks++;
+        this.globalFallbackStats.nextGroups[nextGroup]++;
     }
     
     getMostlyGroupForPattern(patternKey, streakLength) {
@@ -1248,42 +1435,90 @@ class ServerAI_MidHighSwitch {
         return Math.round((count / data.totalBreaks) * 100);
     }
     
-    /**
-     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
-     */
-    getFallbackPrediction() {
+    getMostCommonGroupFromGlobal() {
         let bestGroup = "LOW";
         let bestCount = 0;
-        let totalBreaks = 0;
         
-        for (let len = 1; len <= 18; len++) {
-            for (let pKey of ["MEDIUM→HIGH", "HIGH→MEDIUM"]) {
-                const data = this.patterns[pKey][len];
-                if (data && data.nextGroups) {
-                    for (let group of this.groups) {
-                        const count = data.nextGroups[group] || 0;
-                        totalBreaks += count;
-                        if (count > bestCount) {
-                            bestCount = count;
-                            bestGroup = group;
-                        }
-                    }
+        for (let group of this.groups) {
+            const count = this.globalFallbackStats.nextGroups[group] || 0;
+            if (count > bestCount) {
+                bestCount = count;
+                bestGroup = group;
+            }
+        }
+        return bestGroup;
+    }
+    
+    decidePredictionWithScores(mostCommonGroup, scores, streakLength, patternKey) {
+        for (let group of this.groups) {
+            if (group !== mostCommonGroup) {
+                const scoreDiff = scores[group] - scores[mostCommonGroup];
+                if (scoreDiff >= 20) {
+                    return group;
                 }
             }
         }
+        return mostCommonGroup;
+    }
+    
+    updateScores(patternKey, streakLength, predictedGroup, actualGroup) {
+        const scores = this.patternScores[patternKey][streakLength];
         
-        let confidence = 40;
-        if (totalBreaks > 0) {
-            const percentage = (bestCount / totalBreaks) * 100;
-            confidence = Math.min(70, Math.max(40, Math.round(percentage)));
+        if (predictedGroup !== actualGroup) {
+            scores[predictedGroup] = Math.max(0, scores[predictedGroup] - 20);
+        }
+        scores[actualGroup] = Math.min(100, scores[actualGroup] + 20);
+    }
+    
+    getFallbackPredictionWithScores() {
+        const mostCommonGroup = this.getMostCommonGroupFromGlobal();
+        
+        if (this.globalFallbackStats.totalBreaks === 0) {
+            return {
+                nextGroup: "LOW",
+                confidence: 35,
+                hasSpecificData: false,
+                reason: "Fallback: No global data available, default LOW"
+            };
         }
         
+        const predictedGroup = this.decidePredictionWithScores(
+            mostCommonGroup, 
+            this.fallbackScores, 
+            0, 
+            "FALLBACK"
+        );
+        
+        const count = this.globalFallbackStats.nextGroups[predictedGroup] || 0;
+        const total = this.globalFallbackStats.totalBreaks;
+        const confidence = total > 0 ? Math.round((count / total) * 100) : 35;
+        
         return {
-            nextGroup: bestGroup,
-            confidence: confidence,
+            nextGroup: predictedGroup,
+            confidence: Math.min(70, Math.max(35, confidence)),
             hasSpecificData: false,
-            reason: `Fallback: Most common outcome from ${totalBreaks} breaks is ${bestGroup} (${confidence}%)`
+            reason: `Fallback: Most common ${mostCommonGroup}, score-adjusted to ${predictedGroup}`
         };
+    }
+    
+    updateFallbackScores(predictedGroup, actualGroup) {
+        if (predictedGroup !== actualGroup) {
+            this.fallbackScores[predictedGroup] = Math.max(0, this.fallbackScores[predictedGroup] - 20);
+        }
+        this.fallbackScores[actualGroup] = Math.min(100, this.fallbackScores[actualGroup] + 20);
+    }
+    
+    getHighestScoreGroup(scores) {
+        let bestGroup = "LOW";
+        let bestScore = -1;
+        
+        for (let group of this.groups) {
+            if (scores[group] > bestScore) {
+                bestScore = scores[group];
+                bestGroup = group;
+            }
+        }
+        return bestGroup;
     }
     
     predict(currentGroup, previousGroup) {
@@ -1293,25 +1528,43 @@ class ServerAI_MidHighSwitch {
             let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
             streakLength = Math.min(18, Math.max(1, streakLength));
             
-            let predictedGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            let mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
+            const scores = this.patternScores[immediatePattern][streakLength];
+            
+            let predictedGroup = null;
             let confidence = 0;
             let hasSpecificData = false;
             
-            if (predictedGroup) {
+            if (mostCommonGroup) {
                 hasSpecificData = true;
-                confidence = this.getConfidenceForPattern(immediatePattern, streakLength, predictedGroup);
+                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                const data = this.patterns[immediatePattern][streakLength];
+                const count = data.nextGroups[predictedGroup] || 0;
+                confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
             } else {
-                predictedGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
-                if (predictedGroup) {
-                    confidence = this.getConfidenceForPattern(immediatePattern, 1, predictedGroup);
+                mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
+                if (mostCommonGroup) {
+                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                    const data = this.patterns[immediatePattern][1];
+                    const count = data.nextGroups[predictedGroup] || 0;
+                    confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
                     hasSpecificData = true;
                 } else {
-                    predictedGroup = "LOW";
+                    predictedGroup = this.getHighestScoreGroup(scores);
                     confidence = 40;
+                    hasSpecificData = false;
                 }
             }
             
             const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
+            
+            this.lastPredictionInfo = {
+                patternKey: immediatePattern,
+                streakLength: streakLength,
+                predictedGroup: predictedGroup,
+                usedScores: true,
+                isFallback: false
+            };
             
             return {
                 model: this.name,
@@ -1325,14 +1578,22 @@ class ServerAI_MidHighSwitch {
                 confidence: confidence,
                 breakProbability: 100 - confidence,
                 hasSpecificData: hasSpecificData,
-                reason: hasSpecificData 
-                    ? `After ${streakLength}x alternating ${immediatePattern}, mostly ${predictedGroup}`
-                    : `No data for ${streakLength}x alternating ${immediatePattern}, using default LOW`,
-                accuracy: this.accuracy
+                reason: `After ${streakLength}x alternating ${immediatePattern}, predicting ${predictedGroup}`,
+                accuracy: this.accuracy,
+                scores: scores
             };
         }
         
-        const fallback = this.getFallbackPrediction();
+        const fallbackResult = this.getFallbackPredictionWithScores();
+        
+        this.lastPredictionInfo = {
+            patternKey: "FALLBACK",
+            streakLength: 0,
+            predictedGroup: fallbackResult.nextGroup,
+            usedScores: true,
+            isFallback: true
+        };
+        
         return {
             model: this.name,
             prediction: "FALLBACK",
@@ -1340,18 +1601,32 @@ class ServerAI_MidHighSwitch {
             currentGroup: currentGroup,
             previousGroup: previousGroup,
             currentStreak: 0,
-            nextGroup: fallback.nextGroup,
-            nextGroupConfidence: fallback.confidence,
-            confidence: fallback.confidence,
-            breakProbability: 100 - fallback.confidence,
+            nextGroup: fallbackResult.nextGroup,
+            nextGroupConfidence: fallbackResult.confidence,
+            confidence: fallbackResult.confidence,
+            breakProbability: 100 - fallbackResult.confidence,
             hasSpecificData: false,
-            reason: fallback.reason,
-            accuracy: this.accuracy
+            reason: fallbackResult.reason,
+            accuracy: this.accuracy,
+            fallbackScores: this.fallbackScores
         };
     }
     
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
+        
+        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores) {
+            if (this.lastPredictionInfo.isFallback) {
+                this.updateFallbackScores(this.lastPredictionInfo.predictedGroup, resultGroup);
+            } else {
+                this.updateScores(
+                    this.lastPredictionInfo.patternKey,
+                    this.lastPredictionInfo.streakLength,
+                    this.lastPredictionInfo.predictedGroup,
+                    resultGroup
+                );
+            }
+        }
         
         if (this.currentPatternKey === "MEDIUM→HIGH") {
             const expectedNext = (this.currentStreak % 2 === 1) ? 'MEDIUM' : 'HIGH';
@@ -1391,8 +1666,13 @@ class ServerAI_MidHighSwitch {
             if (patternKey === "MEDIUM→HIGH" || patternKey === "HIGH→MEDIUM") {
                 this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
+            } else {
+                this.globalFallbackStats.totalBreaks++;
+                this.globalFallbackStats.nextGroups[resultGroup]++;
             }
         }
+        
+        this.lastPredictionInfo = null;
     }
     
     recordPredictionResult(correct) {
@@ -1406,6 +1686,9 @@ class ServerAI_MidHighSwitch {
     loadFromData(data) {
         if (data) {
             this.patterns = data.patterns || this.patterns;
+            this.patternScores = data.patternScores || this.patternScores;
+            this.fallbackScores = data.fallbackScores || this.fallbackScores;
+            this.globalFallbackStats = data.globalFallbackStats || this.globalFallbackStats;
             this.currentPatternKey = data.currentPatternKey || null;
             this.currentStreak = data.currentStreak || 0;
             this.totalPredictions = data.totalPredictions || 0;
@@ -1417,6 +1700,9 @@ class ServerAI_MidHighSwitch {
     exportForServer() {
         return {
             patterns: this.patterns,
+            patternScores: this.patternScores,
+            fallbackScores: this.fallbackScores,
+            globalFallbackStats: this.globalFallbackStats,
             currentPatternKey: this.currentPatternKey,
             currentStreak: this.currentStreak,
             totalPredictions: this.totalPredictions,
@@ -1426,6 +1712,13 @@ class ServerAI_MidHighSwitch {
     }
 }
 
+module.exports = {
+    ServerAI_Stick,
+    ServerAI_ExtremeSwitch,
+    ServerAI_LowMidSwitch,
+    ServerAI_MidHighSwitch,
+    ServerEnsembleVoter
+};
 
 /**
  * Server Ensemble Voter (UNCHANGED)
