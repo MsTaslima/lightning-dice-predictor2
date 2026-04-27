@@ -1,7 +1,7 @@
 // ============================================================
-// server-ai-logic.js (COMPLETE FINAL VERSION)
+// server-ai-logic.js (COMPLETE FINAL VERSION - ORDER FIXED)
 // Four AI Pattern Recognition System - Server Side
-// ALL AI HAVE FALLBACK PREDICTION SYSTEM
+// ALL AI HAVE FALLBACK PREDICTION SYSTEM + SCORE SYSTEM
 // ============================================================
 
 /**
@@ -128,10 +128,6 @@ class ServerAI_Stick {
         return this.currentStreak;
     }
     
-    /**
-     * FALLBACK PREDICTION - যখন প্যাটার্ন মেলে না
-     * সব AI-র জন্য এই একই লজিক কাজ করবে
-     */
     getFallbackPrediction() {
         let bestGroup = "MEDIUM";
         let bestCount = 0;
@@ -166,7 +162,6 @@ class ServerAI_Stick {
     }
     
     predict(currentGroup, previousGroup) {
-        // CASE 1: Not sticking (switch already happened)
         if (currentGroup !== previousGroup) {
             const fallback = this.getFallbackPrediction();
             return {
@@ -184,7 +179,6 @@ class ServerAI_Stick {
             };
         }
         
-        // CASE 2: Sticking (same group continues)
         let currentStreak = this.getCurrentStreakFromMemory(previousGroup, currentGroup);
         if (currentStreak === 0) currentStreak = 1;
         
@@ -281,43 +275,36 @@ class ServerAI_Stick {
 
 
 /**
- * AI-B: Extreme Switch Detector (COMPLETE UPDATED VERSION)
+ * AI-B: Extreme Switch Detector (UPDATED WITH DYNAMIC SCORE SYSTEM)
  * Tracks alternating patterns: HIGH↔LOW
- * NEW: Dynamic Score System for each streak length
  */
 class ServerAI_ExtremeSwitch {
     constructor() {
         this.name = "AI_ExtremeSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Pattern data storage
         this.patterns = {
             "HIGH→LOW": {},
             "LOW→HIGH": {}
         };
         
-        // SCORE SYSTEM - NEW: প্রতিটি streak length এর জন্য আলাদা স্কোর
         this.patternScores = {
             "HIGH→LOW": {},
             "LOW→HIGH": {}
         };
         
-        // Fallback scores for when pattern doesn't match
         this.fallbackScores = {
             "LOW": 40,
             "MEDIUM": 40,
             "HIGH": 40
         };
         
-        // Global fallback stats (for data only, not for prediction)
         this.globalFallbackStats = {
             totalBreaks: 0,
             nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
         };
         
-        // Initialize all streak lengths
         for (let len = 1; len <= 18; len++) {
-            // Data storage
             this.patterns["HIGH→LOW"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
@@ -327,7 +314,6 @@ class ServerAI_ExtremeSwitch {
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
             
-            // SCORE storage - প্রতিটি streak length এর জন্য আলাদা স্কোর (starting from 40)
             this.patternScores["HIGH→LOW"][len] = {
                 "LOW": 40,
                 "MEDIUM": 40,
@@ -342,10 +328,10 @@ class ServerAI_ExtremeSwitch {
         
         this.currentPatternKey = null;
         this.currentStreak = 0;
-        
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
+        this.lastPredictionInfo = null;
     }
     
     init() {
@@ -355,7 +341,6 @@ class ServerAI_ExtremeSwitch {
     train(history) {
         if (!history || history.length < 3) return false;
         
-        // Reset data
         for (let len = 1; len <= 18; len++) {
             this.patterns["HIGH→LOW"][len] = {
                 totalBreaks: 0,
@@ -421,7 +406,6 @@ class ServerAI_ExtremeSwitch {
                 this.patterns[patternKey][streakLength].nextGroups[nextGroup]++;
             }
         }
-        // Update global fallback stats
         this.globalFallbackStats.totalBreaks++;
         this.globalFallbackStats.nextGroups[nextGroup]++;
     }
@@ -454,9 +438,6 @@ class ServerAI_ExtremeSwitch {
         return Math.round((count / data.totalBreaks) * 100);
     }
     
-    /**
-     * NEW: Get the most common group from global data (for fallback)
-     */
     getMostCommonGroupFromGlobal() {
         let bestGroup = "MEDIUM";
         let bestCount = 0;
@@ -471,54 +452,30 @@ class ServerAI_ExtremeSwitch {
         return bestGroup;
     }
     
-    /**
-     * NEW: Decision logic based on data + scores
-     * Returns the group to predict based on both database and scoreboard
-     */
-    decidePredictionWithScores(mostCommonGroup, scores, streakLength, patternKey) {
-        // Rule 1: If most common group's score is 20+ less than another group's score
+    decidePredictionWithScores(mostCommonGroup, scores) {
         for (let group of this.groups) {
             if (group !== mostCommonGroup) {
                 const scoreDiff = scores[group] - scores[mostCommonGroup];
                 if (scoreDiff >= 20) {
-                    console.log(`🎯 Score adjustment: ${mostCommonGroup} score ${scores[mostCommonGroup]} vs ${group} score ${scores[group]} (diff ${scoreDiff}) → choosing ${group}`);
                     return group;
                 }
             }
         }
-        
-        // Rule 2: Otherwise predict most common group
         return mostCommonGroup;
     }
     
-    /**
-     * NEW: Update scores after prediction result
-     */
     updateScores(patternKey, streakLength, predictedGroup, actualGroup) {
         const scores = this.patternScores[patternKey][streakLength];
         
-        // 1. Penalty for wrong prediction
         if (predictedGroup !== actualGroup) {
             scores[predictedGroup] = Math.max(0, scores[predictedGroup] - 20);
-            console.log(`❌ ${patternKey} streak=${streakLength}: ${predictedGroup} -20 → ${scores[predictedGroup]}`);
         }
-        
-        // 2. Reward for actual result
         scores[actualGroup] = Math.min(100, scores[actualGroup] + 20);
-        console.log(`✅ ${patternKey} streak=${streakLength}: ${actualGroup} +20 → ${scores[actualGroup]}`);
-        
-        // Save to database (will be called from server)
     }
     
-    /**
-     * NEW: Fallback prediction with score system
-     * When pattern doesn't match HIGH→LOW or LOW→HIGH
-     */
     getFallbackPredictionWithScores() {
-        // Get most common group from global data
         const mostCommonGroup = this.getMostCommonGroupFromGlobal();
         
-        // If no data yet, return MEDIUM with low confidence
         if (this.globalFallbackStats.totalBreaks === 0) {
             return {
                 nextGroup: "MEDIUM",
@@ -528,15 +485,8 @@ class ServerAI_ExtremeSwitch {
             };
         }
         
-        // Use fallback scores for decision
-        const predictedGroup = this.decidePredictionWithScores(
-            mostCommonGroup, 
-            this.fallbackScores, 
-            0, 
-            "FALLBACK"
-        );
+        const predictedGroup = this.decidePredictionWithScores(mostCommonGroup, this.fallbackScores);
         
-        // Calculate confidence based on data percentage
         const count = this.globalFallbackStats.nextGroups[predictedGroup] || 0;
         const total = this.globalFallbackStats.totalBreaks;
         const confidence = total > 0 ? Math.round((count / total) * 100) : 35;
@@ -549,36 +499,34 @@ class ServerAI_ExtremeSwitch {
         };
     }
     
-    /**
-     * NEW: Update fallback scores
-     */
     updateFallbackScores(predictedGroup, actualGroup) {
-        // 1. Penalty for wrong prediction
         if (predictedGroup !== actualGroup) {
             this.fallbackScores[predictedGroup] = Math.max(0, this.fallbackScores[predictedGroup] - 20);
-            console.log(`❌ FALLBACK: ${predictedGroup} -20 → ${this.fallbackScores[predictedGroup]}`);
         }
-        
-        // 2. Reward for actual result
         this.fallbackScores[actualGroup] = Math.min(100, this.fallbackScores[actualGroup] + 20);
-        console.log(`✅ FALLBACK: ${actualGroup} +20 → ${this.fallbackScores[actualGroup]}`);
     }
     
-    /**
-     * MAIN PREDICTION METHOD (UPDATED WITH SCORE SYSTEM)
-     */
+    getHighestScoreGroup(scores) {
+        let bestGroup = "MEDIUM";
+        let bestScore = -1;
+        
+        for (let group of this.groups) {
+            if (scores[group] > bestScore) {
+                bestScore = scores[group];
+                bestGroup = group;
+            }
+        }
+        return bestGroup;
+    }
+    
     predict(currentGroup, previousGroup) {
         const immediatePattern = `${previousGroup}→${currentGroup}`;
         
-        // CASE 1: Pattern matches HIGH→LOW or LOW→HIGH
         if (immediatePattern === "HIGH→LOW" || immediatePattern === "LOW→HIGH") {
             let streakLength = (this.currentPatternKey === immediatePattern) ? this.currentStreak : 1;
             streakLength = Math.min(18, Math.max(1, streakLength));
             
-            // Get most common group from database
             let mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, streakLength);
-            
-            // Get scores for this specific pattern and streak length
             const scores = this.patternScores[immediatePattern][streakLength];
             
             let predictedGroup = null;
@@ -587,24 +535,19 @@ class ServerAI_ExtremeSwitch {
             
             if (mostCommonGroup) {
                 hasSpecificData = true;
-                // DECISION: Use score system to decide final prediction
-                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
-                
-                // Calculate confidence based on data percentage
+                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores);
                 const data = this.patterns[immediatePattern][streakLength];
                 const count = data.nextGroups[predictedGroup] || 0;
                 confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
             } else {
-                // No data for this streak, try streak=1 as fallback
                 mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
                 if (mostCommonGroup) {
-                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores);
                     const data = this.patterns[immediatePattern][1];
                     const count = data.nextGroups[predictedGroup] || 0;
                     confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
                     hasSpecificData = true;
                 } else {
-                    // No data at all, use scores only
                     predictedGroup = this.getHighestScoreGroup(scores);
                     confidence = 40;
                     hasSpecificData = false;
@@ -613,12 +556,12 @@ class ServerAI_ExtremeSwitch {
             
             const predictionType = (predictedGroup === currentGroup) ? "CONTINUE" : "BREAK";
             
-            // Store prediction info for later score update
             this.lastPredictionInfo = {
                 patternKey: immediatePattern,
                 streakLength: streakLength,
                 predictedGroup: predictedGroup,
-                usedScores: true
+                usedScores: true,
+                isFallback: false
             };
             
             return {
@@ -633,16 +576,14 @@ class ServerAI_ExtremeSwitch {
                 confidence: confidence,
                 breakProbability: 100 - confidence,
                 hasSpecificData: hasSpecificData,
-                reason: this.getReasonText(immediatePattern, streakLength, mostCommonGroup, predictedGroup, scores, confidence),
+                reason: `After ${streakLength}x alternating ${immediatePattern}, predicting ${predictedGroup}`,
                 accuracy: this.accuracy,
-                scores: scores  // Include scores in response for debugging
+                scores: scores
             };
         }
         
-        // CASE 2: FALLBACK - Pattern doesn't match (using score system)
         const fallbackResult = this.getFallbackPredictionWithScores();
         
-        // Store for fallback score update
         this.lastPredictionInfo = {
             patternKey: "FALLBACK",
             streakLength: 0,
@@ -669,48 +610,13 @@ class ServerAI_ExtremeSwitch {
         };
     }
     
-    /**
-     * Helper: Get highest score group
-     */
-    getHighestScoreGroup(scores) {
-        let bestGroup = "MEDIUM";
-        let bestScore = -1;
-        
-        for (let group of this.groups) {
-            if (scores[group] > bestScore) {
-                bestScore = scores[group];
-                bestGroup = group;
-            }
-        }
-        return bestGroup;
-    }
-    
-    /**
-     * Helper: Generate reason text for prediction
-     */
-    getReasonText(pattern, streakLength, mostCommon, predicted, scores, confidence) {
-        if (mostCommon && predicted !== mostCommon) {
-            return `${pattern} streak=${streakLength}: Data says ${mostCommon} (${this.patterns[pattern][streakLength]?.nextGroups[mostCommon] || 0} times) but score ${scores[mostCommon]} vs ${scores[predicted]} → Adjusted to ${predicted} (${confidence}%)`;
-        } else if (mostCommon) {
-            return `${pattern} streak=${streakLength}: Most common ${mostCommon} with score ${scores[mostCommon]} → Predicting ${predicted} (${confidence}%)`;
-        } else {
-            return `${pattern} streak=${streakLength}: No data, using scores ${scores[predicted]} → Predicting ${predicted}`;
-        }
-    }
-    
-    /**
-     * UPDATE WITH RESULT - Update both data and scores
-     */
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
         
-        // IMPORTANT: Update scores based on last prediction
         if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores) {
             if (this.lastPredictionInfo.isFallback) {
-                // Update fallback scores
                 this.updateFallbackScores(this.lastPredictionInfo.predictedGroup, resultGroup);
             } else {
-                // Update pattern-specific scores
                 this.updateScores(
                     this.lastPredictionInfo.patternKey,
                     this.lastPredictionInfo.streakLength,
@@ -720,7 +626,6 @@ class ServerAI_ExtremeSwitch {
             }
         }
         
-        // Update pattern streak tracking (existing logic)
         if (this.currentPatternKey === "HIGH→LOW") {
             const expectedNext = (this.currentStreak % 2 === 1) ? 'HIGH' : 'LOW';
             if (resultGroup === expectedNext) {
@@ -760,13 +665,11 @@ class ServerAI_ExtremeSwitch {
                 this.currentPatternKey = patternKey;
                 this.currentStreak = 1;
             } else {
-                // For fallback, also update global stats
                 this.globalFallbackStats.totalBreaks++;
                 this.globalFallbackStats.nextGroups[resultGroup]++;
             }
         }
         
-        // Clear last prediction info after use
         this.lastPredictionInfo = null;
     }
     
@@ -807,7 +710,6 @@ class ServerAI_ExtremeSwitch {
     }
 }
 
-module.exports = { ServerAI_ExtremeSwitch };
 
 /**
  * AI-C: Low-Mid Switch Detector (UPDATED WITH DYNAMIC SCORE SYSTEM)
@@ -818,34 +720,28 @@ class ServerAI_LowMidSwitch {
         this.name = "AI_LowMidSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Pattern data storage
         this.patterns = {
             "LOW→MEDIUM": {},
             "MEDIUM→LOW": {}
         };
         
-        // SCORE SYSTEM - প্রতিটি streak length এর জন্য আলাদা স্কোর
         this.patternScores = {
             "LOW→MEDIUM": {},
             "MEDIUM→LOW": {}
         };
         
-        // Fallback scores for when pattern doesn't match
         this.fallbackScores = {
             "LOW": 40,
             "MEDIUM": 40,
             "HIGH": 40
         };
         
-        // Global fallback stats
         this.globalFallbackStats = {
             totalBreaks: 0,
             nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
         };
         
-        // Initialize all streak lengths
         for (let len = 1; len <= 18; len++) {
-            // Data storage
             this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
@@ -855,7 +751,6 @@ class ServerAI_LowMidSwitch {
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
             
-            // SCORE storage - প্রতিটি streak length এর জন্য আলাদা স্কোর (starting from 40)
             this.patternScores["LOW→MEDIUM"][len] = {
                 "LOW": 40,
                 "MEDIUM": 40,
@@ -870,11 +765,9 @@ class ServerAI_LowMidSwitch {
         
         this.currentPatternKey = null;
         this.currentStreak = 0;
-        
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
-        
         this.lastPredictionInfo = null;
     }
     
@@ -885,7 +778,6 @@ class ServerAI_LowMidSwitch {
     train(history) {
         if (!history || history.length < 3) return false;
         
-        // Reset data
         for (let len = 1; len <= 18; len++) {
             this.patterns["LOW→MEDIUM"][len] = {
                 totalBreaks: 0,
@@ -997,7 +889,7 @@ class ServerAI_LowMidSwitch {
         return bestGroup;
     }
     
-    decidePredictionWithScores(mostCommonGroup, scores, streakLength, patternKey) {
+    decidePredictionWithScores(mostCommonGroup, scores) {
         for (let group of this.groups) {
             if (group !== mostCommonGroup) {
                 const scoreDiff = scores[group] - scores[mostCommonGroup];
@@ -1030,12 +922,7 @@ class ServerAI_LowMidSwitch {
             };
         }
         
-        const predictedGroup = this.decidePredictionWithScores(
-            mostCommonGroup, 
-            this.fallbackScores, 
-            0, 
-            "FALLBACK"
-        );
+        const predictedGroup = this.decidePredictionWithScores(mostCommonGroup, this.fallbackScores);
         
         const count = this.globalFallbackStats.nextGroups[predictedGroup] || 0;
         const total = this.globalFallbackStats.totalBreaks;
@@ -1085,14 +972,14 @@ class ServerAI_LowMidSwitch {
             
             if (mostCommonGroup) {
                 hasSpecificData = true;
-                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores);
                 const data = this.patterns[immediatePattern][streakLength];
                 const count = data.nextGroups[predictedGroup] || 0;
                 confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
             } else {
                 mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
                 if (mostCommonGroup) {
-                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores);
                     const data = this.patterns[immediatePattern][1];
                     const count = data.nextGroups[predictedGroup] || 0;
                     confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
@@ -1270,34 +1157,28 @@ class ServerAI_MidHighSwitch {
         this.name = "AI_MidHighSwitch";
         this.groups = ['LOW', 'MEDIUM', 'HIGH'];
         
-        // Pattern data storage
         this.patterns = {
             "MEDIUM→HIGH": {},
             "HIGH→MEDIUM": {}
         };
         
-        // SCORE SYSTEM - প্রতিটি streak length এর জন্য আলাদা স্কোর
         this.patternScores = {
             "MEDIUM→HIGH": {},
             "HIGH→MEDIUM": {}
         };
         
-        // Fallback scores for when pattern doesn't match
         this.fallbackScores = {
             "LOW": 40,
             "MEDIUM": 40,
             "HIGH": 40
         };
         
-        // Global fallback stats
         this.globalFallbackStats = {
             totalBreaks: 0,
             nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
         };
         
-        // Initialize all streak lengths
         for (let len = 1; len <= 18; len++) {
-            // Data storage
             this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
@@ -1307,7 +1188,6 @@ class ServerAI_MidHighSwitch {
                 nextGroups: { "LOW": 0, "MEDIUM": 0, "HIGH": 0 }
             };
             
-            // SCORE storage - প্রতিটি streak length এর জন্য আলাদা স্কোর (starting from 40)
             this.patternScores["MEDIUM→HIGH"][len] = {
                 "LOW": 40,
                 "MEDIUM": 40,
@@ -1322,11 +1202,9 @@ class ServerAI_MidHighSwitch {
         
         this.currentPatternKey = null;
         this.currentStreak = 0;
-        
         this.totalPredictions = 0;
         this.correctPredictions = 0;
         this.accuracy = 0;
-        
         this.lastPredictionInfo = null;
     }
     
@@ -1337,7 +1215,6 @@ class ServerAI_MidHighSwitch {
     train(history) {
         if (!history || history.length < 3) return false;
         
-        // Reset data
         for (let len = 1; len <= 18; len++) {
             this.patterns["MEDIUM→HIGH"][len] = {
                 totalBreaks: 0,
@@ -1449,7 +1326,7 @@ class ServerAI_MidHighSwitch {
         return bestGroup;
     }
     
-    decidePredictionWithScores(mostCommonGroup, scores, streakLength, patternKey) {
+    decidePredictionWithScores(mostCommonGroup, scores) {
         for (let group of this.groups) {
             if (group !== mostCommonGroup) {
                 const scoreDiff = scores[group] - scores[mostCommonGroup];
@@ -1482,12 +1359,7 @@ class ServerAI_MidHighSwitch {
             };
         }
         
-        const predictedGroup = this.decidePredictionWithScores(
-            mostCommonGroup, 
-            this.fallbackScores, 
-            0, 
-            "FALLBACK"
-        );
+        const predictedGroup = this.decidePredictionWithScores(mostCommonGroup, this.fallbackScores);
         
         const count = this.globalFallbackStats.nextGroups[predictedGroup] || 0;
         const total = this.globalFallbackStats.totalBreaks;
@@ -1537,14 +1409,14 @@ class ServerAI_MidHighSwitch {
             
             if (mostCommonGroup) {
                 hasSpecificData = true;
-                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores);
                 const data = this.patterns[immediatePattern][streakLength];
                 const count = data.nextGroups[predictedGroup] || 0;
                 confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
             } else {
                 mostCommonGroup = this.getMostlyGroupForPattern(immediatePattern, 1);
                 if (mostCommonGroup) {
-                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores, streakLength, immediatePattern);
+                    predictedGroup = this.decidePredictionWithScores(mostCommonGroup, scores);
                     const data = this.patterns[immediatePattern][1];
                     const count = data.nextGroups[predictedGroup] || 0;
                     confidence = data.totalBreaks > 0 ? Math.round((count / data.totalBreaks) * 100) : 40;
@@ -1712,16 +1584,9 @@ class ServerAI_MidHighSwitch {
     }
 }
 
-module.exports = {
-    ServerAI_Stick,
-    ServerAI_ExtremeSwitch,
-    ServerAI_LowMidSwitch,
-    ServerAI_MidHighSwitch,
-    ServerEnsembleVoter
-};
 
 /**
- * Server Ensemble Voter (UNCHANGED)
+ * Server Ensemble Voter
  */
 class ServerEnsembleVoter {
     constructor() {
@@ -1897,9 +1762,7 @@ class ServerEnsembleVoter {
 }
 
 
-// ========== ALL CLASSES DEFINED ABOVE ==========
-
-// Export all server AI classes (একসাথে সব export করুন)
+// ========== EXPORT ALL CLASSES ==========
 module.exports = {
     ServerAI_Stick,
     ServerAI_ExtremeSwitch,
