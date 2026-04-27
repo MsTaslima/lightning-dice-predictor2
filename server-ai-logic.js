@@ -1897,7 +1897,9 @@ class ServerEnsembleVoter {
 }
 
 
-// Export all server AI classes
+// ========== ALL CLASSES DEFINED ABOVE ==========
+
+// Export all server AI classes (একসাথে সব export করুন)
 module.exports = {
     ServerAI_Stick,
     ServerAI_ExtremeSwitch,
