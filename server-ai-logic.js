@@ -1,5 +1,5 @@
 // ============================================================
-// server-ai-logic.js (COMPLETE FINAL VERSION - ORDER FIXED)
+// server-ai-logic.js (COMPLETE FINAL VERSION - FALLBACK SCORE FIXED)
 // Four AI Pattern Recognition System - Server Side
 // ALL AI HAVE FALLBACK PREDICTION SYSTEM + SCORE SYSTEM
 // ============================================================
@@ -610,22 +610,35 @@ class ServerAI_ExtremeSwitch {
         };
     }
     
+    // ========== FIXED: updateWithResult with proper fallback score update ==========
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
         
-        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores) {
-            if (this.lastPredictionInfo.isFallback) {
-                this.updateFallbackScores(this.lastPredictionInfo.predictedGroup, resultGroup);
-            } else {
-                this.updateScores(
-                    this.lastPredictionInfo.patternKey,
-                    this.lastPredictionInfo.streakLength,
-                    this.lastPredictionInfo.predictedGroup,
-                    resultGroup
-                );
+        // CRITICAL FIX: Update fallback scores for EVERY prediction (including pattern matches)
+        if (this.lastPredictionInfo && this.lastPredictionInfo.predictedGroup) {
+            const predicted = this.lastPredictionInfo.predictedGroup;
+            
+            // Update fallback scores (always, for all predictions)
+            if (predicted !== resultGroup) {
+                this.fallbackScores[predicted] = Math.max(0, this.fallbackScores[predicted] - 20);
+                console.log(`❌ FALLBACK SCORE: ${predicted} -20 → ${this.fallbackScores[predicted]}`);
             }
+            this.fallbackScores[resultGroup] = Math.min(100, this.fallbackScores[resultGroup] + 20);
+            console.log(`✅ FALLBACK SCORE: ${resultGroup} +20 → ${this.fallbackScores[resultGroup]}`);
+            console.log(`📊 Current Fallback Scores: LOW=${this.fallbackScores.LOW}, MEDIUM=${this.fallbackScores.MEDIUM}, HIGH=${this.fallbackScores.HIGH}`);
         }
         
+        // Update pattern-specific scores if applicable
+        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores && !this.lastPredictionInfo.isFallback) {
+            this.updateScores(
+                this.lastPredictionInfo.patternKey,
+                this.lastPredictionInfo.streakLength,
+                this.lastPredictionInfo.predictedGroup,
+                resultGroup
+            );
+        }
+        
+        // Update pattern streak tracking
         if (this.currentPatternKey === "HIGH→LOW") {
             const expectedNext = (this.currentStreak % 2 === 1) ? 'HIGH' : 'LOW';
             if (resultGroup === expectedNext) {
@@ -1047,20 +1060,30 @@ class ServerAI_LowMidSwitch {
         };
     }
     
+    // ========== FIXED: updateWithResult with proper fallback score update ==========
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
         
-        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores) {
-            if (this.lastPredictionInfo.isFallback) {
-                this.updateFallbackScores(this.lastPredictionInfo.predictedGroup, resultGroup);
-            } else {
-                this.updateScores(
-                    this.lastPredictionInfo.patternKey,
-                    this.lastPredictionInfo.streakLength,
-                    this.lastPredictionInfo.predictedGroup,
-                    resultGroup
-                );
+        // CRITICAL FIX: Update fallback scores for EVERY prediction
+        if (this.lastPredictionInfo && this.lastPredictionInfo.predictedGroup) {
+            const predicted = this.lastPredictionInfo.predictedGroup;
+            
+            if (predicted !== resultGroup) {
+                this.fallbackScores[predicted] = Math.max(0, this.fallbackScores[predicted] - 20);
+                console.log(`❌ FALLBACK SCORE: ${predicted} -20 → ${this.fallbackScores[predicted]}`);
             }
+            this.fallbackScores[resultGroup] = Math.min(100, this.fallbackScores[resultGroup] + 20);
+            console.log(`✅ FALLBACK SCORE: ${resultGroup} +20 → ${this.fallbackScores[resultGroup]}`);
+            console.log(`📊 Current Fallback Scores: LOW=${this.fallbackScores.LOW}, MEDIUM=${this.fallbackScores.MEDIUM}, HIGH=${this.fallbackScores.HIGH}`);
+        }
+        
+        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores && !this.lastPredictionInfo.isFallback) {
+            this.updateScores(
+                this.lastPredictionInfo.patternKey,
+                this.lastPredictionInfo.streakLength,
+                this.lastPredictionInfo.predictedGroup,
+                resultGroup
+            );
         }
         
         if (this.currentPatternKey === "LOW→MEDIUM") {
@@ -1484,20 +1507,30 @@ class ServerAI_MidHighSwitch {
         };
     }
     
+    // ========== FIXED: updateWithResult with proper fallback score update ==========
     updateWithResult(resultGroup, previousGroup) {
         const patternKey = `${previousGroup}→${resultGroup}`;
         
-        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores) {
-            if (this.lastPredictionInfo.isFallback) {
-                this.updateFallbackScores(this.lastPredictionInfo.predictedGroup, resultGroup);
-            } else {
-                this.updateScores(
-                    this.lastPredictionInfo.patternKey,
-                    this.lastPredictionInfo.streakLength,
-                    this.lastPredictionInfo.predictedGroup,
-                    resultGroup
-                );
+        // CRITICAL FIX: Update fallback scores for EVERY prediction
+        if (this.lastPredictionInfo && this.lastPredictionInfo.predictedGroup) {
+            const predicted = this.lastPredictionInfo.predictedGroup;
+            
+            if (predicted !== resultGroup) {
+                this.fallbackScores[predicted] = Math.max(0, this.fallbackScores[predicted] - 20);
+                console.log(`❌ FALLBACK SCORE: ${predicted} -20 → ${this.fallbackScores[predicted]}`);
             }
+            this.fallbackScores[resultGroup] = Math.min(100, this.fallbackScores[resultGroup] + 20);
+            console.log(`✅ FALLBACK SCORE: ${resultGroup} +20 → ${this.fallbackScores[resultGroup]}`);
+            console.log(`📊 Current Fallback Scores: LOW=${this.fallbackScores.LOW}, MEDIUM=${this.fallbackScores.MEDIUM}, HIGH=${this.fallbackScores.HIGH}`);
+        }
+        
+        if (this.lastPredictionInfo && this.lastPredictionInfo.usedScores && !this.lastPredictionInfo.isFallback) {
+            this.updateScores(
+                this.lastPredictionInfo.patternKey,
+                this.lastPredictionInfo.streakLength,
+                this.lastPredictionInfo.predictedGroup,
+                resultGroup
+            );
         }
         
         if (this.currentPatternKey === "MEDIUM→HIGH") {
