@@ -1,6 +1,7 @@
 // ============================================================
-// COMPLETE server.js (FULLY FIXED + TELEGRAM NOTIFICATION + FALLBACK SCORES)
+// COMPLETE server.js (FIXED: Full AI State Export for Debug Dashboard)
 // Four AI Pattern Recognition System + Telegram Alert (4 consecutive misses)
+// Now exports complete AI patterns, scores, and tracking data
 // ============================================================
 
 // Fix memory leak warnings
@@ -430,7 +431,7 @@ function getPreviousResultsForPrediction(limit = 5) {
     });
 }
 
-// ============ FIXED: getCurrentPredictionData with fallbackScores and weights ============
+// ============ ENHANCED: getCurrentPredictionData with FULL AI STATE ============
 async function getCurrentPredictionData() {
     const previousResults = await getPreviousResultsForPrediction(5);
     if (previousResults.length < 2) {
@@ -447,8 +448,17 @@ async function getCurrentPredictionData() {
             midHighConfidence: 50,
             ensembleConfidence: 50,
             agreement: 0,
+            currentGroup: previousResults[0]?.group || '?',
+            previousGroup: previousResults[1]?.group || '?',
             fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 },
-            weights: { stick: 0.25, extreme: 0.25, lowMid: 0.25, midHigh: 0.25 }
+            weights: { stick: 0.25, extreme: 0.25, lowMid: 0.25, midHigh: 0.25 },
+            // FULL AI STATE for debug dashboard
+            aiState: {
+                stick: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } },
+                extreme: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } },
+                lowMid: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } },
+                midHigh: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } }
+            }
         };
     }
     
@@ -496,14 +506,14 @@ async function getCurrentPredictionData() {
     const ensembleResult = serverAI.ensemble.combine(predStick, predExtreme, predLowMid, predMidHigh);
     const ensembleGroup = ensembleResult.final.group;
     
-    // ========== FALLBACK SCORES সংগ্রহ করা ==========
+    // ========== FALLBACK SCORES from all AIs ==========
     const fallbackScores = {
         LOW: serverAI.extreme?.fallbackScores?.LOW || 40,
         MEDIUM: serverAI.extreme?.fallbackScores?.MEDIUM || 40,
         HIGH: serverAI.extreme?.fallbackScores?.HIGH || 40
     };
     
-    // ========== WEIGHTS সংগ্রহ করা ==========
+    // ========== WEIGHTS from ensemble ==========
     const weights = ensembleResult.weights || {
         stick: 0.25,
         extreme: 0.25,
@@ -511,7 +521,51 @@ async function getCurrentPredictionData() {
         midHigh: 0.25
     };
     
+    // ========== EXPORT COMPLETE AI STATE FOR DEBUG DASHBOARD ==========
+    const aiState = {
+        stick: {
+            patterns: serverAI.stick.patterns,
+            patternScores: serverAI.stick.patternScores,
+            fallbackScores: serverAI.stick.fallbackScores,
+            fallbackTracking: serverAI.stick.fallbackTracking,
+            currentPatternKey: serverAI.stick.currentPatternKey,
+            currentStreak: serverAI.stick.currentStreak,
+            accuracy: serverAI.stick.getAccuracy()
+        },
+        extreme: {
+            patterns: serverAI.extreme.patterns,
+            patternScores: serverAI.extreme.patternScores,
+            fallbackScores: serverAI.extreme.fallbackScores,
+            fallbackTracking: serverAI.extreme.fallbackTracking,
+            currentPatternKey: serverAI.extreme.currentPatternKey,
+            currentStreak: serverAI.extreme.currentStreak,
+            accuracy: serverAI.extreme.getAccuracy()
+        },
+        lowMid: {
+            patterns: serverAI.lowMid.patterns,
+            patternScores: serverAI.lowMid.patternScores,
+            fallbackScores: serverAI.lowMid.fallbackScores,
+            fallbackTracking: serverAI.lowMid.fallbackTracking,
+            currentPatternKey: serverAI.lowMid.currentPatternKey,
+            currentStreak: serverAI.lowMid.currentStreak,
+            accuracy: serverAI.lowMid.getAccuracy()
+        },
+        midHigh: {
+            patterns: serverAI.midHigh.patterns,
+            patternScores: serverAI.midHigh.patternScores,
+            fallbackScores: serverAI.midHigh.fallbackScores,
+            fallbackTracking: serverAI.midHigh.fallbackTracking,
+            currentPatternKey: serverAI.midHigh.currentPatternKey,
+            currentStreak: serverAI.midHigh.currentStreak,
+            accuracy: serverAI.midHigh.getAccuracy()
+        }
+    };
+    
+    // Get tracked groups for display (from fallbackTracking)
+    const trackedGroups = serverAI.extreme.fallbackTracking?.trackedGroups || { LOW: 0, MEDIUM: 0, HIGH: 0 };
+    
     return {
+        // Basic prediction data
         stick: stickGroup,
         extreme: extremeGroup,
         lowMid: lowMidGroup,
@@ -523,8 +577,30 @@ async function getCurrentPredictionData() {
         midHighConfidence: predMidHigh.confidence || 65,
         ensembleConfidence: ensembleResult.final.confidence,
         agreement: ensembleResult.final.agreement,
-        fallbackScores: fallbackScores,  // 👈 Debug Dashboard এর জন্য
-        weights: weights                 // 👈 Ensemble weights এর জন্য
+        currentGroup: currentGroup,
+        previousGroup: previousGroup,
+        
+        // Score and weight data
+        fallbackScores: fallbackScores,
+        weights: weights,
+        trackedGroups: trackedGroups,
+        
+        // Pattern detection status
+        stickPattern: predStick.pattern || null,
+        extremePattern: predExtreme.pattern || null,
+        lowMidPattern: predLowMid.pattern || null,
+        midHighPattern: predMidHigh.pattern || null,
+        stickPredictionType: predStick.prediction,
+        extremePredictionType: predExtreme.prediction,
+        lowMidPredictionType: predLowMid.prediction,
+        midHighPredictionType: predMidHigh.prediction,
+        
+        // ========== COMPLETE AI STATE FOR DEBUG DASHBOARD ==========
+        aiState: aiState,
+        
+        // Individual AI scores for ensemble display
+        scores: ensembleResult.final.scores || { LOW: 0, MEDIUM: 0, HIGH: 0 },
+        voteCount: ensembleResult.final.voteCount || { LOW: 0, MEDIUM: 0, HIGH: 0 }
     };
 }
 
@@ -650,26 +726,21 @@ async function updatePredictionWithResult(resultId, actualGroup) {
     console.log(`   ENSEMBLE: ${prediction.ensemble_group} → ${correct.ensemble ? '✓' : '✗'}`);
     
     // ============ TELEGRAM NOTIFICATION LOGIC ============
-    // Get next round prediction for notification
     const nextRoundPrediction = await getCurrentPredictionData();
     
     const ensembleWasCorrect = (correct.ensemble === 1);
     
     if (ensembleWasCorrect) {
-        // Reset counter when correct
         if (ensembleAlertTriggered) {
             console.log('🔔 ENSEMBLE is correct again. Telegram alerts will stop.');
         }
         ensembleMissCount = 0;
         ensembleAlertTriggered = false;
     } else {
-        // Miss: increment counter
         ensembleMissCount++;
         console.log(`📉 ENSEMBLE miss #${ensembleMissCount}`);
         
-        // Check if we need to send alert (4 or more consecutive misses)
         if (ensembleMissCount >= 4) {
-            // Send Telegram notification
             await sendTelegramNotification(
                 ensembleMissCount,
                 actualGroup,
@@ -702,6 +773,23 @@ async function updatePredictionWithResult(resultId, actualGroup) {
                     await updateAIStatsTable('AI_LowMidSwitch', correct.low_mid === 1);
                     await updateAIStatsTable('AI_MidHighSwitch', correct.mid_high === 1);
                     await updateAIStatsTable('EnsembleVoter', correct.ensemble === 1);
+                    
+                    // Update AI models with the result
+                    const updatedHistory = await getPreviousResultsForPrediction(3);
+                    const prevGroup = updatedHistory[1]?.group || actualGroup;
+                    
+                    serverAI.stick.updateWithResult(actualGroup, prevGroup);
+                    serverAI.extreme.updateWithResult(actualGroup, prevGroup);
+                    serverAI.lowMid.updateWithResult(actualGroup, prevGroup);
+                    serverAI.midHigh.updateWithResult(actualGroup, prevGroup);
+                    serverAI.ensemble.updateWeightsWithResult(actualGroup);
+                    
+                    // Save updated state
+                    await saveServerAIState('AI_Stick');
+                    await saveServerAIState('AI_ExtremeSwitch');
+                    await saveServerAIState('AI_LowMidSwitch');
+                    await saveServerAIState('AI_MidHighSwitch');
+                    await saveServerAIState('EnsembleVoter');
                 }
                 resolve({ prediction, correct });
             }
@@ -873,20 +961,6 @@ async function collectData() {
                     await updatePredictionWithResult(gameId, group);
                     
                     pendingPredictions.delete(gameId);
-                    
-                    const updatedHistory = await getPreviousResultsForPrediction(3);
-                    const currentGroup = updatedHistory[0]?.group || group;
-                    const previousGroup = updatedHistory[1]?.group || currentGroup;
-                    
-                    serverAI.stick.updateWithResult(group, previousGroup);
-                    serverAI.extreme.updateWithResult(group, previousGroup);
-                    serverAI.lowMid.updateWithResult(group, previousGroup);
-                    serverAI.midHigh.updateWithResult(group, previousGroup);
-                    
-                    await saveServerAIState('AI_Stick');
-                    await saveServerAIState('AI_ExtremeSwitch');
-                    await saveServerAIState('AI_LowMidSwitch');
-                    await saveServerAIState('AI_MidHighSwitch');
                     
                     const currentPrediction = await getCurrentPredictionData();
                     await broadcastFullDataOnNewResult(savedResult, currentPrediction);
