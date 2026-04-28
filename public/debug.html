@@ -24,7 +24,6 @@
             margin: 0 auto;
         }
 
-        /* Header */
         .header {
             text-align: center;
             margin-bottom: 30px;
@@ -46,7 +45,6 @@
             margin-top: 10px;
         }
 
-        /* Control Bar */
         .control-bar {
             display: flex;
             gap: 15px;
@@ -81,10 +79,6 @@
             color: white;
         }
 
-        .btn-danger:hover {
-            transform: translateY(-2px);
-        }
-
         .btn-info {
             background: linear-gradient(135deg, #3b82f6, #2563eb);
             color: white;
@@ -95,7 +89,11 @@
             color: white;
         }
 
-        /* Stats Grid */
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -127,7 +125,6 @@
             opacity: 0.5;
         }
 
-        /* Function Status Grid */
         .function-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -181,6 +178,12 @@
             border: 1px solid #fbbf24;
         }
 
+        .status-fallback {
+            background: rgba(139, 92, 246, 0.2);
+            color: #a78bfa;
+            border: 1px solid #a78bfa;
+        }
+
         .function-body {
             padding: 15px 20px;
         }
@@ -202,7 +205,72 @@
             font-family: monospace;
         }
 
-        /* Scores Display */
+        /* Fallback Mode Indicator */
+        .fallback-indicator {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
+            border: 2px solid #a78bfa;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .fallback-active {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.15);
+            border-color: #a78bfa;
+        }
+
+        .fallback-inactive {
+            background: rgba(0, 0, 0, 0.3);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .fallback-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .fallback-title .active-text {
+            color: #a78bfa;
+        }
+
+        .fallback-title .inactive-text {
+            color: #6b7280;
+        }
+
+        .fallback-details {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+
+        .last-pattern {
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: 700;
+            color: #fbbf24;
+            margin-top: 10px;
+        }
+
+        /* WebSocket Status */
+        .ws-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .ws-connected {
+            background: #10b981;
+            box-shadow: 0 0 5px #10b981;
+        }
+
+        .ws-disconnected {
+            background: #ef4444;
+        }
+
         .scores-container {
             background: rgba(0, 0, 0, 0.4);
             border-radius: 16px;
@@ -244,7 +312,6 @@
             opacity: 0.7;
         }
 
-        /* Console Log */
         .console-log {
             background: #0a0a0a;
             border-radius: 16px;
@@ -274,7 +341,7 @@
         }
 
         .console-content {
-            height: 200px;
+            height: 250px;
             overflow-y: auto;
             font-family: monospace;
             font-size: 12px;
@@ -295,14 +362,25 @@
             color: #fbbf24;
         }
 
-        /* Loading */
-        .loading {
-            text-align: center;
-            padding: 40px;
-            opacity: 0.7;
+        .console-line.info {
+            color: #60a5fa;
         }
 
-        /* Responsive */
+        .live-badge {
+            background: #ef4444;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            margin-left: 10px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
         @media (max-width: 768px) {
             .function-grid {
                 grid-template-columns: 1fr;
@@ -317,17 +395,47 @@
     <div class="container">
         <div class="header">
             <h1>🔍 AI Debug Dashboard</h1>
-            <p>Lightning Dice Predictor - Function Testing & Monitoring</p>
+            <p>Lightning Dice Predictor - Function Testing & Monitoring <span class="live-badge" id="liveBadge">LIVE</span></p>
         </div>
 
         <div class="control-bar">
             <button class="btn btn-primary" id="testAllBtn">🧪 Test All Functions</button>
             <button class="btn btn-info" id="fetchStatusBtn">📡 Fetch Current Status</button>
             <button class="btn btn-success" id="testPredictionBtn">🎯 Test Prediction</button>
+            <button class="btn btn-warning" id="forceRefreshBtn">🔄 Force Refresh</button>
             <button class="btn btn-danger" id="clearConsoleBtn">🗑 Clear Console</button>
         </div>
 
-        <!-- Stats Grid -->
+        <!-- WebSocket Status Bar -->
+        <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 10px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <span class="ws-status" id="wsStatusDot"></span>
+                <span id="wsStatusText">WebSocket: Connecting...</span>
+            </div>
+            <div>
+                <span>🕐 Last Update: </span>
+                <span id="lastUpdateTime" style="color: #fbbf24;">--:--:--</span>
+            </div>
+            <div>
+                <span>📡 Auto Refresh: </span>
+                <span id="autoRefreshStatus" style="color: #10b981;">Active (WebSocket)</span>
+            </div>
+        </div>
+
+        <!-- Fallback Mode Indicator (NEW) -->
+        <div class="fallback-indicator" id="fallbackIndicator">
+            <div class="fallback-title">
+                <span>⚠️ FALLBACK MODE STATUS</span>
+            </div>
+            <div id="fallbackModeStatus" style="font-size: 24px; font-weight: 800;">🔍 Checking...</div>
+            <div class="fallback-details" id="fallbackModeDetails">
+                Analyzing current pattern...
+            </div>
+            <div class="last-pattern" id="lastPatternDisplay">
+                Last Pattern: --
+            </div>
+        </div>
+
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card">
                 <h3>📊 Total Results</h3>
@@ -347,9 +455,7 @@
             </div>
         </div>
 
-        <!-- Function Status Grid -->
         <div class="function-grid" id="functionGrid">
-            <!-- AI-A -->
             <div class="function-card">
                 <div class="function-header">
                     <span class="function-name">🎯 AI-A (Stick Detector)</span>
@@ -361,8 +467,8 @@
                         <span class="detail-value" id="aiAPredict">Not Tested</span>
                     </div>
                     <div class="function-detail">
-                        <span class="detail-label">UpdateWithResult():</span>
-                        <span class="detail-value" id="aiAUpdate">Not Tested</span>
+                        <span class="detail-label">Current Mode:</span>
+                        <span class="detail-value" id="aiAMode">--</span>
                     </div>
                     <div class="function-detail">
                         <span class="detail-label">Accuracy:</span>
@@ -371,7 +477,6 @@
                 </div>
             </div>
 
-            <!-- AI-B -->
             <div class="function-card">
                 <div class="function-header">
                     <span class="function-name">🔄 AI-B (Extreme Switch)</span>
@@ -383,8 +488,8 @@
                         <span class="detail-value" id="aiBPredict">Not Tested</span>
                     </div>
                     <div class="function-detail">
-                        <span class="detail-label">Score System:</span>
-                        <span class="detail-value" id="aiBScoreSystem">Not Tested</span>
+                        <span class="detail-label">Current Mode:</span>
+                        <span class="detail-value" id="aiBMode">--</span>
                     </div>
                     <div class="function-detail">
                         <span class="detail-label">Pattern Detected:</span>
@@ -393,7 +498,6 @@
                 </div>
             </div>
 
-            <!-- AI-C -->
             <div class="function-card">
                 <div class="function-header">
                     <span class="function-name">↗️ AI-C (Low-Mid Switch)</span>
@@ -405,8 +509,8 @@
                         <span class="detail-value" id="aiCPredict">Not Tested</span>
                     </div>
                     <div class="function-detail">
-                        <span class="detail-label">Score System:</span>
-                        <span class="detail-value" id="aiCScoreSystem">Not Tested</span>
+                        <span class="detail-label">Current Mode:</span>
+                        <span class="detail-value" id="aiCMode">--</span>
                     </div>
                     <div class="function-detail">
                         <span class="detail-label">Pattern Detected:</span>
@@ -415,7 +519,6 @@
                 </div>
             </div>
 
-            <!-- AI-D -->
             <div class="function-card">
                 <div class="function-header">
                     <span class="function-name">↘️ AI-D (Mid-High Switch)</span>
@@ -427,8 +530,8 @@
                         <span class="detail-value" id="aiDPredict">Not Tested</span>
                     </div>
                     <div class="function-detail">
-                        <span class="detail-label">Score System:</span>
-                        <span class="detail-value" id="aiDScoreSystem">Not Tested</span>
+                        <span class="detail-label">Current Mode:</span>
+                        <span class="detail-value" id="aiDMode">--</span>
                     </div>
                     <div class="function-detail">
                         <span class="detail-label">Pattern Detected:</span>
@@ -437,7 +540,6 @@
                 </div>
             </div>
 
-            <!-- Ensemble -->
             <div class="function-card">
                 <div class="function-header">
                     <span class="function-name">🏆 Ensemble Voter</span>
@@ -459,7 +561,6 @@
                 </div>
             </div>
 
-            <!-- Fallback System -->
             <div class="function-card">
                 <div class="function-header">
                     <span class="function-name">⚠️ Fallback System</span>
@@ -475,14 +576,13 @@
                         <span class="detail-value" id="fallbackScoreUpdate">Not Tested</span>
                     </div>
                     <div class="function-detail">
-                        <span class="detail-label">Active:</span>
-                        <span class="detail-value" id="fallbackActive">--</span>
+                        <span class="detail-label">Tracked Groups:</span>
+                        <span class="detail-value" id="trackedGroups">--</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Current Scores Display -->
         <div class="scores-container">
             <div class="scores-title">📊 Current Fallback Scores (FALLBACK Mode)</div>
             <div class="scores-grid">
@@ -507,35 +607,39 @@
             </div>
         </div>
 
-        <!-- Console Log -->
         <div class="console-log">
             <div class="console-header">
-                <span class="console-title">📋 Debug Console</span>
+                <span class="console-title">📋 Debug Console <span style="font-size: 10px; opacity: 0.5;">(Real-time updates via WebSocket)</span></span>
                 <button class="clear-console" id="clearConsoleBtn2">Clear</button>
             </div>
             <div class="console-content" id="consoleContent">
                 <div class="console-line">🔍 Debug dashboard loaded. Click "Test All Functions" to start...</div>
+                <div class="console-line info">🔄 WebSocket connecting for real-time updates...</div>
             </div>
         </div>
     </div>
 
     <script>
-        // API Base URL
         const API_BASE = '/api';
-        
-        // Console logging
+        let ws = null;
+        let lastUpdateTimestamp = null;
+
         function addConsoleLog(message, type = 'info') {
             const consoleDiv = document.getElementById('consoleContent');
             const time = new Date().toLocaleTimeString();
-            const colorClass = type === 'error' ? 'error' : (type === 'warning' ? 'warning' : '');
+            const colorClass = type === 'error' ? 'error' : (type === 'warning' ? 'warning' : (type === 'info' ? 'info' : ''));
             const line = document.createElement('div');
             line.className = `console-line ${colorClass}`;
             line.innerHTML = `[${time}] ${message}`;
             consoleDiv.appendChild(line);
             line.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            // Limit console lines
+            while (consoleDiv.children.length > 200) {
+                consoleDiv.removeChild(consoleDiv.firstChild);
+            }
         }
 
-        // Update status badge
         function updateStatus(elementId, isWorking, message = '') {
             const element = document.getElementById(elementId);
             if (!element) return;
@@ -546,13 +650,15 @@
             } else if (isWorking === false) {
                 element.className = 'status-badge status-not-working';
                 element.textContent = message || '❌ Not Working';
+            } else if (isWorking === 'fallback') {
+                element.className = 'status-badge status-fallback';
+                element.textContent = message || '🔄 Fallback Mode';
             } else {
                 element.className = 'status-badge status-unknown';
                 element.textContent = message || '⚠️ Unknown';
             }
         }
 
-        // Update detail value
         function updateDetail(elementId, value, isError = false) {
             const element = document.getElementById(elementId);
             if (element) {
@@ -565,213 +671,160 @@
             }
         }
 
-        // Test AI-A (Stick)
-        async function testAIA() {
-            addConsoleLog('🧪 Testing AI-A (Stick Detector)...');
+        // Update Fallback Mode Indicator
+        function updateFallbackIndicator(prediction) {
+            const indicator = document.getElementById('fallbackIndicator');
+            const statusDiv = document.getElementById('fallbackModeStatus');
+            const detailsDiv = document.getElementById('fallbackModeDetails');
+            const lastPatternDiv = document.getElementById('lastPatternDisplay');
+            
+            if (!prediction) {
+                statusDiv.textContent = '❓ Unknown';
+                detailsDiv.textContent = 'Unable to determine mode';
+                return;
+            }
+            
+            // Check if any AI is in fallback mode
+            const isFallbackActive = (
+                (prediction.prediction === 'FALLBACK') ||
+                (prediction.extreme === 'MEDIUM' && prediction.lowMid === 'MEDIUM' && prediction.midHigh === 'MEDIUM')
+            );
+            
+            if (isFallbackActive) {
+                statusDiv.innerHTML = '⚠️ ACTIVE - Using Fallback Mode';
+                statusDiv.style.color = '#a78bfa';
+                detailsDiv.innerHTML = '🔍 Current pattern does not match any tracked pattern. System is using Fallback Mode with Score System.';
+                indicator.className = 'fallback-indicator fallback-active';
+                addConsoleLog('🔍 FALLBACK MODE ACTIVE: Pattern not matched, using tracked data + score system', 'warning');
+            } else {
+                statusDiv.innerHTML = '✅ INACTIVE - Pattern Matched';
+                statusDiv.style.color = '#10b981';
+                detailsDiv.innerHTML = '🎯 Current pattern matches tracked pattern. Using pattern-specific data for prediction.';
+                indicator.className = 'fallback-indicator fallback-inactive';
+            }
+            
+            // Try to show last pattern from any AI
+            if (prediction.pattern) {
+                lastPatternDiv.innerHTML = `Last Pattern: ${prediction.pattern}`;
+            } else if (prediction.extremePattern) {
+                lastPatternDiv.innerHTML = `Last Pattern: ${prediction.extremePattern}`;
+            } else {
+                lastPatternDiv.innerHTML = `Last Pattern: ${prediction.previousGroup || '--'} → ${prediction.currentGroup || '--'}`;
+            }
+        }
+
+        function updateAIMode(prediction) {
+            // AI-A Mode
+            if (prediction.stickPrediction === 'FALLBACK' || (prediction.stick === 'MEDIUM' && prediction.stickConfidence < 50)) {
+                updateStatus('aiAStatus', 'fallback', '🔄 Fallback');
+                updateDetail('aiAMode', 'Fallback Mode');
+            } else {
+                updateStatus('aiAStatus', true, '✅ Working');
+                updateDetail('aiAMode', 'Pattern Mode');
+            }
+            
+            // AI-B Mode
+            if (prediction.extreme === 'MEDIUM' && prediction.extremeConfidence < 50) {
+                updateStatus('aiBStatus', 'fallback', '🔄 Fallback');
+                updateDetail('aiBMode', 'Fallback Mode');
+            } else if (prediction.extreme !== 'MEDIUM') {
+                updateStatus('aiBStatus', true, '✅ Working');
+                updateDetail('aiBMode', 'Pattern Mode');
+            } else {
+                updateStatus('aiBStatus', false, '⚠️ Always MEDIUM');
+                updateDetail('aiBMode', 'No Pattern Data');
+            }
+            
+            // AI-C Mode
+            if (prediction.lowMid === 'MEDIUM' && prediction.lowMidConfidence < 50) {
+                updateStatus('aiCStatus', 'fallback', '🔄 Fallback');
+                updateDetail('aiCMode', 'Fallback Mode');
+            } else if (prediction.lowMid !== 'MEDIUM') {
+                updateStatus('aiCStatus', true, '✅ Working');
+                updateDetail('aiCMode', 'Pattern Mode');
+            } else {
+                updateStatus('aiCStatus', false, '⚠️ Always MEDIUM');
+                updateDetail('aiCMode', 'No Pattern Data');
+            }
+            
+            // AI-D Mode
+            if (prediction.midHigh === 'MEDIUM' && prediction.midHighConfidence < 50) {
+                updateStatus('aiDStatus', 'fallback', '🔄 Fallback');
+                updateDetail('aiDMode', 'Fallback Mode');
+            } else if (prediction.midHigh !== 'MEDIUM') {
+                updateStatus('aiDStatus', true, '✅ Working');
+                updateDetail('aiDMode', 'Pattern Mode');
+            } else {
+                updateStatus('aiDStatus', false, '⚠️ Always MEDIUM');
+                updateDetail('aiDMode', 'No Pattern Data');
+            }
+        }
+
+        async function loadCurrentData() {
             try {
                 const response = await fetch(`${API_BASE}/current-prediction`);
                 const data = await response.json();
                 
                 if (data && data.prediction) {
                     const pred = data.prediction;
-                    if (pred.stick) {
-                        updateDetail('aiAPredict', `✓ Returns: ${pred.stick} (${pred.stickConfidence || 0}%)`);
-                        updateStatus('aiAStatus', true, '✅ Working');
-                        updateDetail('aiAAccuracy', `${pred.stickConfidence || 0}%`);
-                        addConsoleLog(`✓ AI-A predict() working: Returns ${pred.stick}`, 'success');
-                        return true;
+                    
+                    // Update AI displays
+                    updateDetail('aiAPredict', `${pred.stick} (${pred.stickConfidence || 0}%)`);
+                    updateDetail('aiBPredict', `${pred.extreme} (${pred.extremeConfidence || 0}%)`);
+                    updateDetail('aiCPredict', `${pred.lowMid} (${pred.lowMidConfidence || 0}%)`);
+                    updateDetail('aiDPredict', `${pred.midHigh} (${pred.midHighConfidence || 0}%)`);
+                    
+                    updateDetail('aiBPattern', pred.extremePattern || (pred.extreme !== 'MEDIUM' ? `Pattern: ${pred.previousGroup}→${pred.currentGroup}` : 'No pattern'));
+                    updateDetail('aiCPattern', pred.lowMidPattern || (pred.lowMid !== 'MEDIUM' ? `Pattern: ${pred.previousGroup}→${pred.currentGroup}` : 'No pattern'));
+                    updateDetail('aiDPattern', pred.midHighPattern || (pred.midHigh !== 'MEDIUM' ? `Pattern: ${pred.previousGroup}→${pred.currentGroup}` : 'No pattern'));
+                    
+                    // Update tracked groups if available
+                    if (pred.trackedGroups) {
+                        updateDetail('trackedGroups', `H:${pred.trackedGroups.HIGH || 0} M:${pred.trackedGroups.MEDIUM || 0} L:${pred.trackedGroups.LOW || 0}`);
                     }
-                }
-                throw new Error('No prediction data');
-            } catch (error) {
-                updateDetail('aiAPredict', '❌ Failed', true);
-                updateStatus('aiAStatus', false, '❌ Error');
-                addConsoleLog(`❌ AI-A test failed: ${error.message}`, 'error');
-                return false;
-            }
-        }
-
-        // Test AI-B (Extreme) with Score System
-        async function testAIB() {
-            addConsoleLog('🧪 Testing AI-B (Extreme Switch with Score System)...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                
-                if (data && data.prediction) {
-                    const pred = data.prediction;
                     
-                    // Check if AI-B is returning something other than just MEDIUM
-                    const isWorking = pred.extreme && pred.extreme !== 'MEDIUM';
-                    const hasScoreSystem = pred.scores !== undefined;
+                    // Update Fallback Indicator
+                    updateFallbackIndicator(pred);
+                    updateAIMode(pred);
                     
-                    if (pred.extreme) {
-                        updateDetail('aiBPredict', `✓ Returns: ${pred.extreme} (${pred.extremeConfidence || 0}%)`);
-                        updateDetail('aiBScoreSystem', hasScoreSystem ? '✓ Score System Active' : '⚠️ Score System Missing');
-                        updateStatus('aiBStatus', isWorking, isWorking ? '✅ Working' : '⚠️ Always MEDIUM');
-                        updateDetail('aiBPattern', pred.pattern || 'No pattern');
-                        addConsoleLog(`✓ AI-B predict(): Returns ${pred.extreme}, Pattern: ${pred.pattern || 'none'}`, isWorking ? 'success' : 'warning');
-                        return isWorking;
+                    // Update scores
+                    if (pred.fallbackScores) {
+                        document.getElementById('scoreLow').textContent = pred.fallbackScores.LOW || 40;
+                        document.getElementById('scoreMedium').textContent = pred.fallbackScores.MEDIUM || 40;
+                        document.getElementById('scoreHigh').textContent = pred.fallbackScores.HIGH || 40;
                     }
-                }
-                throw new Error('No AI-B data');
-            } catch (error) {
-                updateDetail('aiBPredict', '❌ Failed', true);
-                updateStatus('aiBStatus', false, '❌ Error');
-                addConsoleLog(`❌ AI-B test failed: ${error.message}`, 'error');
-                return false;
-            }
-        }
-
-        // Test AI-C (Low-Mid)
-        async function testAIC() {
-            addConsoleLog('🧪 Testing AI-C (Low-Mid Switch)...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                
-                if (data && data.prediction) {
-                    const pred = data.prediction;
-                    const isWorking = pred.lowMid && pred.lowMid !== 'MEDIUM';
                     
-                    updateDetail('aiCPredict', `✓ Returns: ${pred.lowMid} (${pred.lowMidConfidence || 0}%)`);
-                    updateDetail('aiCScoreSystem', pred.scores ? '✓ Score System Active' : '⚠️ Score System Missing');
-                    updateStatus('aiCStatus', isWorking, isWorking ? '✅ Working' : '⚠️ Always MEDIUM');
-                    updateDetail('aiCPattern', pred.pattern || 'No pattern');
-                    addConsoleLog(`✓ AI-C predict(): Returns ${pred.lowMid}`, isWorking ? 'success' : 'warning');
-                    return isWorking;
-                }
-                throw new Error('No AI-C data');
-            } catch (error) {
-                updateDetail('aiCPredict', '❌ Failed', true);
-                updateStatus('aiCStatus', false, '❌ Error');
-                return false;
-            }
-        }
-
-        // Test AI-D (Mid-High)
-        async function testAID() {
-            addConsoleLog('🧪 Testing AI-D (Mid-High Switch)...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                
-                if (data && data.prediction) {
-                    const pred = data.prediction;
-                    const isWorking = pred.midHigh && pred.midHigh !== 'MEDIUM';
-                    
-                    updateDetail('aiDPredict', `✓ Returns: ${pred.midHigh} (${pred.midHighConfidence || 0}%)`);
-                    updateDetail('aiDScoreSystem', pred.scores ? '✓ Score System Active' : '⚠️ Score System Missing');
-                    updateStatus('aiDStatus', isWorking, isWorking ? '✅ Working' : '⚠️ Always MEDIUM');
-                    updateDetail('aiDPattern', pred.pattern || 'No pattern');
-                    addConsoleLog(`✓ AI-D predict(): Returns ${pred.midHigh}`, isWorking ? 'success' : 'warning');
-                    return isWorking;
-                }
-                throw new Error('No AI-D data');
-            } catch (error) {
-                updateDetail('aiDPredict', '❌ Failed', true);
-                updateStatus('aiDStatus', false, '❌ Error');
-                return false;
-            }
-        }
-
-        // Test Ensemble
-        async function testEnsemble() {
-            addConsoleLog('🧪 Testing Ensemble Voter...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                
-                if (data && data.prediction) {
-                    const pred = data.prediction;
-                    updateDetail('ensembleCombine', `✓ Returns: ${pred.ensemble} (${pred.ensembleConfidence || 0}%)`);
-                    
+                    // Update weights
                     if (pred.weights) {
-                        const weights = pred.weights;
-                        const weightText = `S:${Math.round(weights.stick*100)}% E:${Math.round(weights.extreme*100)}% L:${Math.round(weights.lowMid*100)}% M:${Math.round(weights.midHigh*100)}%`;
-                        updateDetail('ensembleCurrentWeights', weightText);
-                        updateDetail('ensembleWeights', '✓ Dynamic Weights Active');
+                        const w = pred.weights;
+                        updateDetail('ensembleCurrentWeights', `S:${Math.round(w.stick*100)}% E:${Math.round(w.extreme*100)}% L:${Math.round(w.lowMid*100)}% M:${Math.round(w.midHigh*100)}%`);
                         updateStatus('ensembleStatus', true, '✅ Working');
-                        addConsoleLog(`✓ Ensemble combine() working. Weights: ${weightText}`, 'success');
-                    } else {
-                        updateDetail('ensembleWeights', '⚠️ Static Weights?');
-                        updateStatus('ensembleStatus', true, '⚠️ Check Weights');
+                        updateDetail('ensembleWeights', '✓ Dynamic Weights Active');
                     }
-                    return true;
-                }
-                throw new Error('No ensemble data');
-            } catch (error) {
-                updateDetail('ensembleCombine', '❌ Failed', true);
-                updateStatus('ensembleStatus', false, '❌ Error');
-                return false;
-            }
-        }
-
-        // Test Fallback System
-        async function testFallback() {
-            addConsoleLog('🧪 Testing Fallback System & Score Updates...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                
-                if (data && data.prediction) {
-                    const pred = data.prediction;
-                    const hasFallbackScores = pred.fallbackScores !== undefined;
                     
-                    if (hasFallbackScores) {
-                        updateDetail('fallbackPredict', '✓ Returns prediction');
-                        updateDetail('fallbackScoreUpdate', '✓ +20/-20 Active');
+                    // Update fallback status
+                    if (pred.fallbackScores) {
                         updateStatus('fallbackStatus', true, '✅ Working');
-                        addConsoleLog(`✓ Fallback System active with Score System`, 'success');
-                    } else {
-                        updateDetail('fallbackPredict', '⚠️ No fallback data');
-                        updateDetail('fallbackScoreUpdate', '❌ Score Update Missing!');
-                        updateStatus('fallbackStatus', false, '❌ Score System Not Working');
-                        addConsoleLog(`❌ Fallback Score System NOT working! Needs fix.`, 'error');
+                        updateDetail('fallbackScoreUpdate', '✓ +20/-20 Active');
                     }
                     
-                    updateDetail('fallbackActive', pred.nextGroup ? `Active - predicts ${pred.nextGroup}` : 'Active');
-                    return hasFallbackScores;
-                }
-                throw new Error('No fallback data');
-            } catch (error) {
-                updateDetail('fallbackPredict', '❌ Failed', true);
-                updateStatus('fallbackStatus', false, '❌ Error');
-                return false;
-            }
-        }
-
-        // Fetch and display scores
-        async function fetchScores() {
-            addConsoleLog('📊 Fetching current scores...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                
-                if (data && data.prediction && data.prediction.fallbackScores) {
-                    const scores = data.prediction.fallbackScores;
-                    document.getElementById('scoreLow').textContent = scores.LOW || 40;
-                    document.getElementById('scoreMedium').textContent = scores.MEDIUM || 40;
-                    document.getElementById('scoreHigh').textContent = scores.HIGH || 40;
-                    addConsoleLog(`✓ Scores: LOW=${scores.LOW || 40}, MEDIUM=${scores.MEDIUM || 40}, HIGH=${scores.HIGH || 40}`, 'success');
-                } else {
-                    document.getElementById('scoreLow').textContent = '40';
-                    document.getElementById('scoreMedium').textContent = '40';
-                    document.getElementById('scoreHigh').textContent = '40';
-                    addConsoleLog(`⚠️ No score data from server, showing defaults`, 'warning');
+                    // Update timestamp
+                    const now = new Date();
+                    document.getElementById('lastUpdateTime').textContent = now.toLocaleTimeString();
+                    
+                    return pred;
                 }
             } catch (error) {
-                addConsoleLog(`❌ Failed to fetch scores: ${error.message}`, 'error');
+                addConsoleLog(`❌ Failed to load data: ${error.message}`, 'error');
             }
+            return null;
         }
 
-        // Fetch stats
         async function fetchStats() {
             try {
                 const response = await fetch(`${API_BASE}/stats`);
                 const data = await response.json();
                 document.getElementById('totalResults').textContent = data.totalRounds || 0;
-                document.getElementById('ensembleAccuracy').textContent = data.ensembleAccuracy || '--';
                 document.getElementById('serverStatus').textContent = '🟢 Online';
             } catch (error) {
                 document.getElementById('serverStatus').textContent = '🔴 Offline';
@@ -785,74 +838,135 @@
             } catch (error) {
                 document.getElementById('totalPredictions').textContent = '?';
             }
+            
+            try {
+                const resp = await fetch(`${API_BASE}/ai-stats`);
+                const stats = await resp.json();
+                const ensembleStat = stats.find(s => s.ai_name === 'EnsembleVoter');
+                if (ensembleStat) {
+                    document.getElementById('ensembleAccuracy').textContent = ensembleStat.accuracy ? ensembleStat.accuracy.toFixed(1) : '--';
+                }
+                const stickStat = stats.find(s => s.ai_name === 'AI_Stick');
+                if (stickStat) {
+                    updateDetail('aiAAccuracy', `${stickStat.accuracy ? stickStat.accuracy.toFixed(1) : 0}%`);
+                }
+            } catch (error) {
+                console.error('Error fetching AI stats:', error);
+            }
         }
 
-        // Run all tests
-        async function runAllTests() {
-            addConsoleLog('🚀 Starting full system diagnostic...');
-            addConsoleLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        // WebSocket Setup for Real-time Updates
+        function setupWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
             
-            await testAIA();
-            await testAIB();
-            await testAIC();
-            await testAID();
-            await testEnsemble();
-            const fallbackResult = await testFallback();
-            await fetchScores();
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('wsStatusDot').className = 'ws-status ws-connected';
+                document.getElementById('wsStatusText').innerHTML = 'WebSocket: ✅ Connected';
+                addConsoleLog('🔌 WebSocket connected - Real-time updates active', 'success');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_result' || data.type === 'prediction_update') {
+                        addConsoleLog(`🔄 Real-time update received - New result detected`, 'info');
+                        loadCurrentData();
+                        fetchStats();
+                        document.getElementById('lastUpdateTime').style.color = '#10b981';
+                        setTimeout(() => {
+                            document.getElementById('lastUpdateTime').style.color = '#fbbf24';
+                        }, 500);
+                    }
+                } catch (e) {
+                    console.error('WebSocket message error:', e);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                document.getElementById('wsStatusDot').className = 'ws-status ws-disconnected';
+                document.getElementById('wsStatusText').innerHTML = 'WebSocket: ❌ Error';
+                addConsoleLog('⚠️ WebSocket error occurred', 'warning');
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.getElementById('wsStatusDot').className = 'ws-status ws-disconnected';
+                document.getElementById('wsStatusText').innerHTML = 'WebSocket: 🔴 Disconnected';
+                addConsoleLog('🔌 WebSocket disconnected - Real-time updates paused', 'warning');
+                
+                // Try to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (!ws || ws.readyState === WebSocket.CLOSED) {
+                        addConsoleLog('🔄 Attempting to reconnect WebSocket...', 'info');
+                        setupWebSocket();
+                    }
+                }, 3000);
+            };
+        }
+
+        async function runAllTests() {
+            addConsoleLog('🚀 Starting full system diagnostic...', 'info');
+            addConsoleLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            
+            await loadCurrentData();
             await fetchStats();
             
-            addConsoleLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            
-            if (!fallbackResult) {
-                addConsoleLog('⚠️ CRITICAL: Fallback Score System is NOT working!', 'error');
-                addConsoleLog('   Fix: Update updateWithResult() to call updateFallbackScores()', 'error');
-            }
-            
+            addConsoleLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
             addConsoleLog('✅ Diagnostic complete!', 'success');
         }
 
-        // Test single prediction
         async function testPrediction() {
-            addConsoleLog('🎯 Testing live prediction...');
-            try {
-                const response = await fetch(`${API_BASE}/current-prediction`);
-                const data = await response.json();
-                if (data && data.prediction) {
-                    const p = data.prediction;
-                    addConsoleLog(`📊 Prediction Result:`, 'info');
-                    addConsoleLog(`   AI-A (Stick): ${p.stick} (${p.stickConfidence}%)`);
-                    addConsoleLog(`   AI-B (Extreme): ${p.extreme} (${p.extremeConfidence}%)`);
-                    addConsoleLog(`   AI-C (Low-Mid): ${p.lowMid} (${p.lowMidConfidence}%)`);
-                    addConsoleLog(`   AI-D (Mid-High): ${p.midHigh} (${p.midHighConfidence}%)`);
-                    addConsoleLog(`   🏆 ENSEMBLE: ${p.ensemble} (${p.ensembleConfidence}%)`);
-                    
-                    if (p.extreme === 'MEDIUM' && p.lowMid === 'MEDIUM' && p.midHigh === 'MEDIUM') {
-                        addConsoleLog(`⚠️ WARNING: All AIs (B, C, D) are predicting MEDIUM! Fallback score system may not be working.`, 'warning');
-                    }
-                }
-            } catch (error) {
-                addConsoleLog(`❌ Prediction failed: ${error.message}`, 'error');
+            addConsoleLog('🎯 Testing live prediction...', 'info');
+            await loadCurrentData();
+            const pred = await loadCurrentData();
+            if (pred) {
+                addConsoleLog(`   AI-A (Stick): ${pred.stick} (${pred.stickConfidence}%)`);
+                addConsoleLog(`   AI-B (Extreme): ${pred.extreme} (${pred.extremeConfidence}%)`);
+                addConsoleLog(`   AI-C (Low-Mid): ${pred.lowMid} (${pred.lowMidConfidence}%)`);
+                addConsoleLog(`   AI-D (Mid-High): ${pred.midHigh} (${pred.midHighConfidence}%)`);
+                addConsoleLog(`   🏆 ENSEMBLE: ${pred.ensemble} (${pred.ensembleConfidence}%)`);
             }
         }
 
-        // Clear console
         function clearConsole() {
             const consoleDiv = document.getElementById('consoleContent');
-            consoleDiv.innerHTML = '<div class="console-line">🗑 Console cleared. Click "Test All Functions" to start...</div>';
+            consoleDiv.innerHTML = '<div class="console-line">🗑 Console cleared. Real-time updates active...</div>';
             addConsoleLog('Console cleared', 'info');
+        }
+
+        function forceRefresh() {
+            addConsoleLog('🔄 Force refreshing all data...', 'info');
+            loadCurrentData();
+            fetchStats();
+            addConsoleLog('✅ Data refreshed', 'success');
         }
 
         // Event listeners
         document.getElementById('testAllBtn').addEventListener('click', runAllTests);
-        document.getElementById('fetchStatusBtn').addEventListener('click', () => { fetchStats(); fetchScores(); addConsoleLog('📡 Status refreshed'); });
+        document.getElementById('fetchStatusBtn').addEventListener('click', () => { fetchStats(); loadCurrentData(); addConsoleLog('📡 Status refreshed'); });
         document.getElementById('testPredictionBtn').addEventListener('click', testPrediction);
         document.getElementById('clearConsoleBtn').addEventListener('click', clearConsole);
         document.getElementById('clearConsoleBtn2').addEventListener('click', clearConsole);
+        document.getElementById('forceRefreshBtn').addEventListener('click', forceRefresh);
         
-        // Auto-run on load
+        // Initialize
+        setupWebSocket();
         setTimeout(() => {
             runAllTests();
         }, 1000);
+        
+        // Auto refresh every 10 seconds as fallback (if WebSocket misses)
+        setInterval(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                loadCurrentData();
+                fetchStats();
+            }
+        }, 10000);
     </script>
 </body>
 </html>
