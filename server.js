@@ -1,5 +1,5 @@
 // ============================================================
-// COMPLETE server.js (FULLY FIXED + TELEGRAM NOTIFICATION)
+// COMPLETE server.js (FULLY FIXED + TELEGRAM NOTIFICATION + FALLBACK SCORES)
 // Four AI Pattern Recognition System + Telegram Alert (4 consecutive misses)
 // ============================================================
 
@@ -430,6 +430,7 @@ function getPreviousResultsForPrediction(limit = 5) {
     });
 }
 
+// ============ FIXED: getCurrentPredictionData with fallbackScores and weights ============
 async function getCurrentPredictionData() {
     const previousResults = await getPreviousResultsForPrediction(5);
     if (previousResults.length < 2) {
@@ -445,7 +446,9 @@ async function getCurrentPredictionData() {
             lowMidConfidence: 50,
             midHighConfidence: 50,
             ensembleConfidence: 50,
-            agreement: 0
+            agreement: 0,
+            fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 },
+            weights: { stick: 0.25, extreme: 0.25, lowMid: 0.25, midHigh: 0.25 }
         };
     }
     
@@ -493,6 +496,21 @@ async function getCurrentPredictionData() {
     const ensembleResult = serverAI.ensemble.combine(predStick, predExtreme, predLowMid, predMidHigh);
     const ensembleGroup = ensembleResult.final.group;
     
+    // ========== FALLBACK SCORES সংগ্রহ করা ==========
+    const fallbackScores = {
+        LOW: serverAI.extreme?.fallbackScores?.LOW || 40,
+        MEDIUM: serverAI.extreme?.fallbackScores?.MEDIUM || 40,
+        HIGH: serverAI.extreme?.fallbackScores?.HIGH || 40
+    };
+    
+    // ========== WEIGHTS সংগ্রহ করা ==========
+    const weights = ensembleResult.weights || {
+        stick: 0.25,
+        extreme: 0.25,
+        lowMid: 0.25,
+        midHigh: 0.25
+    };
+    
     return {
         stick: stickGroup,
         extreme: extremeGroup,
@@ -504,7 +522,9 @@ async function getCurrentPredictionData() {
         lowMidConfidence: predLowMid.confidence || 65,
         midHighConfidence: predMidHigh.confidence || 65,
         ensembleConfidence: ensembleResult.final.confidence,
-        agreement: ensembleResult.final.agreement
+        agreement: ensembleResult.final.agreement,
+        fallbackScores: fallbackScores,  // 👈 Debug Dashboard এর জন্য
+        weights: weights                 // 👈 Ensemble weights এর জন্য
     };
 }
 
