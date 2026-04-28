@@ -3,270 +3,268 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Debug Dashboard - Lightning Dice Predictor</title>
+    <title>Lightning Dice - Complete AI Debug Dashboard</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
             min-height: 100vh;
             padding: 20px;
             color: #fff;
         }
 
-        .container { max-width: 1400px; margin: 0 auto; }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
 
+        /* Header */
         .header {
             text-align: center;
             margin-bottom: 30px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.3);
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2));
             border-radius: 20px;
+            border-bottom: 3px solid #fbbf24;
         }
 
         .header h1 {
-            font-size: 28px;
-            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            font-size: 32px;
+            background: linear-gradient(135deg, #fff, #fbbf24);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
+        .header p {
+            opacity: 0.6;
+            margin-top: 8px;
+        }
+
+        /* Control Bar */
         .control-bar {
             display: flex;
-            gap: 15px;
-            margin-bottom: 30px;
+            gap: 12px;
+            margin-bottom: 25px;
             flex-wrap: wrap;
             justify-content: center;
         }
 
         .btn {
-            padding: 12px 24px;
+            padding: 10px 20px;
             border: none;
-            border-radius: 12px;
-            font-size: 14px;
+            border-radius: 10px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
         }
 
         .btn-primary { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #1a1a2e; }
         .btn-info { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
         .btn-success { background: linear-gradient(135deg, #10b981, #059669); color: white; }
-        .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
         .btn-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+        .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        .btn:hover { transform: translateY(-2px); opacity: 0.9; }
 
+        /* Status Bar */
+        .status-bar {
+            background: rgba(0,0,0,0.4);
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .ws-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        .ws-connected { background: #10b981; box-shadow: 0 0 5px #10b981; }
+        .ws-disconnected { background: #ef4444; }
+        .live-badge { background: #ef4444; padding: 2px 8px; border-radius: 20px; font-size: 10px; margin-left: 10px; animation: pulse 1.5s infinite; }
+
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
         }
 
         .stat-card {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 20px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 15px;
             text-align: center;
         }
 
-        .stat-value { font-size: 32px; font-weight: 800; }
+        .stat-card h4 { font-size: 12px; opacity: 0.6; margin-bottom: 8px; }
+        .stat-value { font-size: 28px; font-weight: 800; }
 
-        /* Fallback Mode Main Card */
-        .fallback-main-card {
-            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.05));
-            border: 2px solid #a78bfa;
-            border-radius: 20px;
-            padding: 25px;
-            margin-bottom: 30px;
+        /* Main Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 25px;
         }
 
-        .fallback-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+        /* Card Style */
+        .card {
+            background: rgba(0,0,0,0.35);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .fallback-title {
-            font-size: 24px;
+        .card-header {
+            padding: 15px 20px;
+            background: rgba(0,0,0,0.4);
+            border-bottom: 2px solid;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .card-body { padding: 18px; }
+
+        /* AI specific border colors */
+        .ai-stick .card-header { border-bottom-color: #3b82f6; }
+        .ai-extreme .card-header { border-bottom-color: #a78bfa; }
+        .ai-lowmid .card-header { border-bottom-color: #f59e0b; }
+        .ai-midhigh .card-header { border-bottom-color: #10b981; }
+        .fallback-card .card-header { border-bottom-color: #ef4444; }
+        .ensemble-card .card-header { border-bottom-color: #fbbf24; }
+
+        /* Pattern Table (Length-wise) */
+        .pattern-table {
+            width: 100%;
+            font-size: 11px;
+            border-collapse: collapse;
+        }
+
+        .pattern-table th, .pattern-table td {
+            padding: 6px 4px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .pattern-table th { background: rgba(0,0,0,0.3); font-weight: 600; }
+
+        .group-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .group-low { background: rgba(239,68,68,0.3); color: #ef4444; }
+        .group-medium { background: rgba(251,191,36,0.3); color: #fbbf24; }
+        .group-high { background: rgba(16,185,129,0.3); color: #10b981; }
+
+        .score-value {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .prediction-display {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            color: #1a1a2e;
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .prediction-group {
+            font-size: 32px;
             font-weight: 800;
         }
 
-        .fallback-title .active { color: #a78bfa; }
-        .fallback-title .inactive { color: #6b7280; }
-
-        .fallback-badge-active {
-            background: rgba(139, 92, 246, 0.3);
-            padding: 6px 16px;
-            border-radius: 30px;
-            font-weight: 700;
-            color: #a78bfa;
-            border: 1px solid #a78bfa;
-        }
-
-        .fallback-badge-inactive {
-            background: rgba(16, 185, 129, 0.2);
-            padding: 6px 16px;
-            border-radius: 30px;
-            font-weight: 700;
-            color: #10b981;
-            border: 1px solid #10b981;
-        }
-
-        .last-pattern-box {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .last-pattern-label { font-size: 12px; opacity: 0.7; margin-bottom: 5px; }
-        .last-pattern-value { font-size: 28px; font-weight: 800; color: #fbbf24; font-family: monospace; }
-
-        /* Tracked Data Table */
-        .tracked-table {
-            width: 100%;
-            border-collapse: collapse;
+        /* Fallback Section */
+        .fallback-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
             margin: 15px 0;
-        }
-
-        .tracked-table th, .tracked-table td {
-            padding: 12px;
             text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .tracked-table th {
-            background: rgba(139, 92, 246, 0.2);
-            font-weight: 700;
+        .fallback-score {
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 12px;
         }
 
-        .group-highlight {
+        .fallback-score .score-num { font-size: 24px; font-weight: 800; }
+        .fallback-score.low .score-num { color: #ef4444; }
+        .fallback-score.medium .score-num { color: #fbbf24; }
+        .fallback-score.high .score-num { color: #10b981; }
+
+        .tracked-box {
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: 12px;
+            margin: 10px 0;
+        }
+
+        .tracked-counts {
+            display: flex;
+            justify-content: space-around;
             font-size: 20px;
             font-weight: 800;
         }
 
-        .prediction-result {
-            background: linear-gradient(135deg, #fbbf24, #f59e0b);
-            color: #1a1a2e;
-            padding: 20px;
-            border-radius: 16px;
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .prediction-group {
-            font-size: 48px;
-            font-weight: 800;
-        }
-
-        .score-system {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 15px;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 12px;
-        }
-
-        .score-item {
-            text-align: center;
-        }
-
-        .score-item.low .score-number { color: #ef4444; }
-        .score-item.medium .score-number { color: #fbbf24; }
-        .score-item.high .score-number { color: #10b981; }
-
-        .score-number { font-size: 28px; font-weight: 800; }
-        .score-label-sm { font-size: 11px; opacity: 0.6; }
-
-        .function-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .function-card {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 16px;
-            overflow: hidden;
-        }
-
-        .function-header {
-            padding: 15px 20px;
-            background: rgba(0, 0, 0, 0.3);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .function-name { font-weight: 700; }
-
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
-        .status-working { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; }
-        .status-fallback { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid #a78bfa; }
-        .status-medium { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid #fbbf24; }
-
-        .function-body { padding: 15px 20px; }
-        .function-detail {
-            font-size: 12px;
-            padding: 6px 0;
-            display: flex;
-            justify-content: space-between;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
+        /* Console */
         .console-log {
             background: #0a0a0a;
             border-radius: 16px;
-            padding: 20px;
-            margin-top: 30px;
+            padding: 18px;
+            margin-top: 20px;
         }
 
         .console-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
 
         .console-content {
-            height: 200px;
+            height: 180px;
             overflow-y: auto;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 11px;
         }
 
-        .console-line { padding: 4px 8px; color: #4ade80; }
+        .console-line { padding: 3px 5px; color: #4ade80; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .console-line.error { color: #ef4444; }
         .console-line.warning { color: #fbbf24; }
         .console-line.info { color: #60a5fa; }
 
-        .ws-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
-        .ws-connected { background: #10b981; box-shadow: 0 0 5px #10b981; }
-        .ws-disconnected { background: #ef4444; }
+        /* Responsive */
+        @media (max-width: 1000px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
     </style>
 </head>
 <body>
 <div class="container">
+    <!-- Header -->
     <div class="header">
-        <h1>🔍 AI Debug Dashboard - Fallback System Monitor</h1>
-        <p>Live monitoring of Pattern Detection & Fallback Score System</p>
+        <h1>🔍 Lightning Dice - Complete AI Debug Dashboard</h1>
+        <p>Four AI Pattern Recognition System | Length-wise Tracking | Fallback Score System</p>
     </div>
 
+    <!-- Control Bar -->
     <div class="control-bar">
         <button class="btn btn-primary" id="testAllBtn">🧪 Test All Functions</button>
         <button class="btn btn-info" id="fetchStatusBtn">📡 Fetch Status</button>
@@ -275,124 +273,172 @@
         <button class="btn btn-danger" id="clearConsoleBtn">🗑 Clear Console</button>
     </div>
 
-    <!-- WebSocket Status -->
-    <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 10px 20px; margin-bottom: 20px; display: flex; justify-content: space-between;">
-        <div><span class="ws-status" id="wsStatusDot"></span><span id="wsStatusText">Connecting...</span></div>
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div><span class="ws-status" id="wsStatusDot"></span><span id="wsStatusText">Connecting...</span><span class="live-badge" id="liveBadge">LIVE</span></div>
         <div>🕐 Last Update: <span id="lastUpdateTime" style="color:#fbbf24;">--:--:--</span></div>
+        <div>📡 Auto Refresh: <span id="autoRefreshStatus" style="color:#10b981;">WebSocket Active</span></div>
     </div>
 
-    <!-- ========== FALLBACK SYSTEM MAIN DISPLAY (যেমনটা আপনি চেয়েছেন) ========== -->
-    <div class="fallback-main-card" id="fallbackMainCard">
-        <div class="fallback-header">
-            <div class="fallback-title">
-                ⚡ FALLBACK SYSTEM STATUS
-            </div>
-            <div id="fallbackModeBadge" class="fallback-badge-active">🔍 CHECKING...</div>
-        </div>
-
-        <!-- Last Pattern Display -->
-        <div class="last-pattern-box">
-            <div class="last-pattern-label">📌 LAST PATTERN (যার পর থেকে ট্র্যাক করছে)</div>
-            <div class="last-pattern-value" id="lastPatternValue">-- → --</div>
-        </div>
-
-        <!-- Tracked Groups Data (লাস্ট প্যাটার্নের পর থেকে আসা ডাটা) -->
-        <div style="margin-bottom: 20px;">
-            <div style="text-align: center; margin-bottom: 10px; font-weight: 700;">📊 TRACKED DATA (লাস্ট প্যাটার্নের পর থেকে)</div>
-            <table class="tracked-table">
-                <thead>
-                    <tr>
-                        <th>🔴 LOW</th>
-                        <th>🟡 MEDIUM</th>
-                        <th>🟢 HIGH</th>
-                        <th>📊 TOTAL</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td id="trackedLow" class="group-highlight" style="color:#ef4444;">0</td>
-                        <td id="trackedMedium" class="group-highlight" style="color:#fbbf24;">0</td>
-                        <td id="trackedHigh" class="group-highlight" style="color:#10b981;">0</td>
-                        <td id="trackedTotal">0</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Which group is leading -->
-        <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 15px; margin-bottom: 20px; text-align: center;">
-            <span style="opacity: 0.7;">🎯 MOST COMMON GROUP (ডাটা অনুযায়ী): </span>
-            <span id="mostCommonGroup" style="font-size: 24px; font-weight: 800; color: #fbbf24;">--</span>
-            <span id="mostCommonCount" style="margin-left: 10px;">(0 বার)</span>
-        </div>
-
-        <!-- Score System Display -->
-        <div class="score-system">
-            <div class="score-item low">
-                <div class="score-label-sm">🔴 LOW SCORE</div>
-                <div class="score-number" id="scoreLow">40</div>
-                <div class="score-label-sm">/100</div>
-            </div>
-            <div class="score-item medium">
-                <div class="score-label-sm">🟡 MEDIUM SCORE</div>
-                <div class="score-number" id="scoreMedium">40</div>
-                <div class="score-label-sm">/100</div>
-            </div>
-            <div class="score-item high">
-                <div class="score-label-sm">🟢 HIGH SCORE</div>
-                <div class="score-number" id="scoreHigh">40</div>
-                <div class="score-label-sm">/100</div>
-            </div>
-        </div>
-
-        <!-- Final Prediction Result -->
-        <div class="prediction-result">
-            <div style="font-size: 14px; opacity: 0.8;">🎲 FALLBACK SYSTEM PREDICTION</div>
-            <div class="prediction-group" id="fallbackPredictionGroup">MEDIUM</div>
-            <div id="predictionReason" style="font-size: 12px; margin-top: 8px;">Waiting for data...</div>
-            <div id="scoreAdjustmentInfo" style="font-size: 11px; margin-top: 5px; opacity: 0.7;"></div>
-        </div>
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-card"><h4>📊 Total Results</h4><div class="stat-value" id="totalResults">0</div></div>
+        <div class="stat-card"><h4>📈 Total Predictions</h4><div class="stat-value" id="totalPredictions">0</div></div>
+        <div class="stat-card"><h4>🎯 Ensemble Accuracy</h4><div class="stat-value" id="ensembleAccuracy">--<span style="font-size:14px;">%</span></div></div>
+        <div class="stat-card"><h4>🟢 Server Status</h4><div class="stat-value" id="serverStatus">🟢 Online</div></div>
     </div>
 
-    <!-- AI Models Grid -->
-    <div class="function-grid">
-        <div class="function-card">
-            <div class="function-header"><span>🎯 AI-A (Stick)</span><span class="status-badge" id="aiAStatus">--</span></div>
-            <div class="function-body">
-                <div class="function-detail"><span>Predict()</span><span id="aiAPredict">--</span></div>
-                <div class="function-detail"><span>Mode</span><span id="aiAMode">--</span></div>
-                <div class="function-detail"><span>Accuracy</span><span id="aiAAccuracy">--</span></div>
+    <!-- Main Dashboard Grid - 2 Columns -->
+    <div class="dashboard-grid">
+        
+        <!-- ==================== AI-A: Stick Detector ==================== -->
+        <div class="card ai-stick">
+            <div class="card-header">🎯 AI-A: Stick Detector (LOW→LOW / MEDIUM→MEDIUM / HIGH→HIGH)</div>
+            <div class="card-body">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span>📌 Current Pattern: <strong id="aiAInput">-- → --</strong></span>
+                    <span>🎲 Prediction: <strong id="aiAPred" style="font-size:18px;">--</strong></span>
+                    <span>📊 Confidence: <strong id="aiAConf">--%</strong></span>
+                </div>
+                <div style="font-size:12px; margin-bottom: 12px;">📈 Accuracy: <span id="aiAAcc">--%</span> | Mode: <span id="aiAMode">--</span></div>
+                
+                <!-- Length-wise Pattern Data (1-6) -->
+                <div style="margin-top: 10px;">
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:5px;">📋 Length-wise Pattern Data (LOW→LOW)</div>
+                    <table class="pattern-table" id="aiAStickTable">
+                        <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Confidence</th></tr></thead>
+                        <tbody><tr><td colspan="6">Loading...</td></tr></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <div class="function-card">
-            <div class="function-header"><span>🔄 AI-B (Extreme)</span><span class="status-badge" id="aiBStatus">--</span></div>
-            <div class="function-body">
-                <div class="function-detail"><span>Predict()</span><span id="aiBPredict">--</span></div>
-                <div class="function-detail"><span>Mode</span><span id="aiBMode">--</span></div>
-                <div class="function-detail"><span>Pattern</span><span id="aiBPattern">--</span></div>
+
+        <!-- ==================== AI-B: Extreme Switch ==================== -->
+        <div class="card ai-extreme">
+            <div class="card-header">🔄 AI-B: Extreme Switch (HIGH↔LOW)</div>
+            <div class="card-body">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span>📌 Current Pattern: <strong id="aiBInput">-- → --</strong></span>
+                    <span>🎲 Prediction: <strong id="aiBPred" style="font-size:18px;">--</strong></span>
+                    <span>📊 Confidence: <strong id="aiBConf">--%</strong></span>
+                </div>
+                <div style="font-size:12px; margin-bottom: 12px;">🎯 Pattern Detected: <span id="aiBPattern">--</span> | Mode: <span id="aiBMode">--</span></div>
+                
+                <div style="margin-top: 10px;">
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:5px;">📋 Length-wise Pattern Data (HIGH→LOW)</div>
+                    <table class="pattern-table" id="aiBTable">
+                        <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Confidence</th></tr></thead>
+                        <tbody><tr><td colspan="6">Loading...</td></tr></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <div class="function-card">
-            <div class="function-header"><span>↗️ AI-C (Low-Mid)</span><span class="status-badge" id="aiCStatus">--</span></div>
-            <div class="function-body">
-                <div class="function-detail"><span>Predict()</span><span id="aiCPredict">--</span></div>
-                <div class="function-detail"><span>Mode</span><span id="aiCMode">--</span></div>
-                <div class="function-detail"><span>Pattern</span><span id="aiCPattern">--</span></div>
+
+        <!-- ==================== AI-C: Low-Mid Switch ==================== -->
+        <div class="card ai-lowmid">
+            <div class="card-header">↗️ AI-C: Low-Mid Switch (LOW↔MEDIUM)</div>
+            <div class="card-body">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span>📌 Current Pattern: <strong id="aiCInput">-- → --</strong></span>
+                    <span>🎲 Prediction: <strong id="aiCPred" style="font-size:18px;">--</strong></span>
+                    <span>📊 Confidence: <strong id="aiCConf">--%</strong></span>
+                </div>
+                <div style="font-size:12px; margin-bottom: 12px;">🎯 Pattern Detected: <span id="aiCPattern">--</span> | Mode: <span id="aiCMode">--</span></div>
+                
+                <div style="margin-top: 10px;">
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:5px;">📋 Length-wise Pattern Data (LOW→MEDIUM)</div>
+                    <table class="pattern-table" id="aiCTable">
+                        <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Confidence</th></tr></thead>
+                        <tbody><tr><td colspan="6">Loading...</td></tr></tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        <div class="function-card">
-            <div class="function-header"><span>↘️ AI-D (Mid-High)</span><span class="status-badge" id="aiDStatus">--</span></div>
-            <div class="function-body">
-                <div class="function-detail"><span>Predict()</span><span id="aiDPredict">--</span></div>
-                <div class="function-detail"><span>Mode</span><span id="aiDMode">--</span></div>
-                <div class="function-detail"><span>Pattern</span><span id="aiDPattern">--</span></div>
+
+        <!-- ==================== AI-D: Mid-High Switch ==================== -->
+        <div class="card ai-midhigh">
+            <div class="card-header">↘️ AI-D: Mid-High Switch (MEDIUM↔HIGH)</div>
+            <div class="card-body">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span>📌 Current Pattern: <strong id="aiDInput">-- → --</strong></span>
+                    <span>🎲 Prediction: <strong id="aiDPred" style="font-size:18px;">--</strong></span>
+                    <span>📊 Confidence: <strong id="aiDConf">--%</strong></span>
+                </div>
+                <div style="font-size:12px; margin-bottom: 12px;">🎯 Pattern Detected: <span id="aiDPattern">--</span> | Mode: <span id="aiDMode">--</span></div>
+                
+                <div style="margin-top: 10px;">
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:5px;">📋 Length-wise Pattern Data (MEDIUM→HIGH)</div>
+                    <table class="pattern-table" id="aiDTable">
+                        <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Confidence</th></tr></thead>
+                        <tbody><tr><td colspan="6">Loading...</td></tr></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- ==================== FALLBACK SYSTEM CARD ==================== -->
+    <div class="card fallback-card" style="margin-bottom: 20px;">
+        <div class="card-header">⚠️ FALLBACK SYSTEM (প্যাটার্ন না মেললে এখান থেকে প্রেডিকশন)</div>
+        <div class="card-body">
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
+                <div><strong>📌 Last Pattern:</strong> <span id="fallbackLastPattern" style="color:#fbbf24;">-- → --</span></div>
+                <div><strong>⚠️ Fallback Mode:</strong> <span id="fallbackModeStatus" style="color:#a78bfa;">CHECKING</span></div>
+            </div>
+
+            <!-- Tracked Data after last pattern -->
+            <div class="tracked-box">
+                <div style="text-align:center; margin-bottom:8px;">📊 Tracked Data (লাস্ট প্যাটার্নের পর থেকে)</div>
+                <div class="tracked-counts">
+                    <span>🔴 LOW: <span id="trackedLow">0</span></span>
+                    <span>🟡 MEDIUM: <span id="trackedMedium">0</span></span>
+                    <span>🟢 HIGH: <span id="trackedHigh">0</span></span>
+                    <span>📊 Total: <span id="trackedTotal">0</span></span>
+                </div>
+                <div style="text-align:center; margin-top:8px; font-size:12px;">
+                    🎯 Most Common: <strong id="mostCommonGroup" style="color:#fbbf24;">--</strong> (<span id="mostCommonCount">0</span> বার)
+                </div>
+            </div>
+
+            <!-- Score System (0-100 with +20/-20) -->
+            <div class="fallback-stats">
+                <div class="fallback-score low"><div>🔴 LOW</div><div class="score-num" id="scoreLow">40</div><div style="font-size:10px;">/100</div></div>
+                <div class="fallback-score medium"><div>🟡 MEDIUM</div><div class="score-num" id="scoreMedium">40</div><div style="font-size:10px;">/100</div></div>
+                <div class="fallback-score high"><div>🟢 HIGH</div><div class="score-num" id="scoreHigh">40</div><div style="font-size:10px;">/100</div></div>
+            </div>
+
+            <!-- Final Prediction -->
+            <div class="prediction-display">
+                <div style="font-size:12px;">🎲 FALLBACK SYSTEM PREDICTION</div>
+                <div class="prediction-group" id="fallbackPrediction">--</div>
+                <div id="fallbackReason" style="font-size:11px; margin-top:5px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== ENSEMBLE VOTER ==================== -->
+    <div class="card ensemble-card" style="margin-bottom: 20px;">
+        <div class="card-header">🏆 ENSEMBLE VOTER (Four AI Combined)</div>
+        <div class="card-body">
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+                <div><strong>🎯 Ensemble Prediction:</strong> <span id="ensemblePred" style="font-size:24px; font-weight:800;">--</span></div>
+                <div><strong>📊 Confidence:</strong> <span id="ensembleConf">--%</span></div>
+                <div><strong>🤝 Agreement:</strong> <span id="ensembleAgreement">--/4</span></div>
+                <div><strong>⚖️ Weights:</strong> <span id="ensembleWeights">--</span></div>
+            </div>
+            <div style="margin-top: 12px; font-size:12px;" id="ensembleScores">LOW:0 | MEDIUM:0 | HIGH:0</div>
+        </div>
+    </div>
+
+    <!-- Console Log -->
     <div class="console-log">
-        <div class="console-header"><span>📋 Debug Console</span><button class="clear-console" id="clearConsoleBtn2" style="background:rgba(255,255,255,0.1);border:none;padding:4px12px;border-radius:8px;cursor:pointer;">Clear</button></div>
-        <div class="console-content" id="consoleContent"><div class="console-line">🔍 Dashboard loaded. Click "Test All Functions" to start...</div></div>
+        <div class="console-header">
+            <span>📋 Debug Console (Real-time Updates)</span>
+            <button class="clear-console" id="clearConsoleBtn2" style="background:rgba(255,255,255,0.1); border:none; padding:4px 12px; border-radius:8px; cursor:pointer;">Clear</button>
+        </div>
+        <div class="console-content" id="consoleContent">
+            <div class="console-line">🔍 Dashboard loaded. WebSocket connecting...</div>
+        </div>
     </div>
 </div>
 
@@ -408,158 +454,221 @@
         line.innerHTML = `[${time}] ${msg}`;
         div.appendChild(line);
         line.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        while(div.children.length > 200) div.removeChild(div.firstChild);
+        while(div.children.length > 300) div.removeChild(div.firstChild);
+    }
+
+    // Update Pattern Tables (Length-wise data simulation - will be populated from API)
+    function updatePatternTable(tableId, data, patternName) {
+        const tbody = document.querySelector(`#${tableId} tbody`);
+        if (!tbody) return;
+        
+        if (!data || !data.patterns) {
+            tbody.innerHTML = '<tr><td colspan="6">No pattern data yet</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        for(let len = 1; len <= 6; len++) {
+            const patternData = data.patterns[patternName]?.[len];
+            if(patternData && patternData.totalBreaks > 0) {
+                const total = patternData.totalBreaks;
+                const lowCount = patternData.nextGroups?.LOW || 0;
+                const medCount = patternData.nextGroups?.MEDIUM || 0;
+                const highCount = patternData.nextGroups?.HIGH || 0;
+                const lowPct = total > 0 ? Math.round((lowCount/total)*100) : 0;
+                const medPct = total > 0 ? Math.round((medCount/total)*100) : 0;
+                const highPct = total > 0 ? Math.round((highCount/total)*100) : 0;
+                html += `<tr>
+                    <td>${len}</td>
+                    <td>${total}</td>
+                    <td><span class="group-badge group-low">${lowCount} (${lowPct}%)</span></td>
+                    <td><span class="group-badge group-medium">${medCount} (${medPct}%)</span></td>
+                    <td><span class="group-badge group-high">${highCount} (${highPct}%)</span></td>
+                    <td>${Math.max(lowPct, medPct, highPct)}%</td>
+                </tr>`;
+            } else {
+                html += `<tr><td>${len}</td><td colspan="5">No data</td></tr>`;
+            }
+        }
+        tbody.innerHTML = html;
     }
 
     async function fetchAndUpdate() {
         try {
+            // Get current prediction
             const res = await fetch(`${API_BASE}/current-prediction`);
             const data = await res.json();
+            
             if (data && data.prediction) {
                 const p = data.prediction;
                 document.getElementById('lastUpdateTime').textContent = new Date().toLocaleTimeString();
                 
-                // Update Fallback Main Display
+                // ===== AI-A Update =====
+                document.getElementById('aiAInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
+                document.getElementById('aiAPred').innerHTML = `${p.stick || 'MEDIUM'}`;
+                document.getElementById('aiAConf').innerHTML = `${p.stickConfidence || 0}%`;
+                document.getElementById('aiAMode').innerHTML = p.stick !== 'MEDIUM' ? 'Pattern Mode' : (p.stickConfidence < 50 ? 'Fallback Mode' : 'Learning');
+                
+                // ===== AI-B Update =====
+                document.getElementById('aiBInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
+                document.getElementById('aiBPred').innerHTML = `${p.extreme || 'MEDIUM'}`;
+                document.getElementById('aiBConf').innerHTML = `${p.extremeConfidence || 0}%`;
+                document.getElementById('aiBPattern').innerHTML = p.extremePattern || (p.extreme !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
+                document.getElementById('aiBMode').innerHTML = p.extreme !== 'MEDIUM' ? 'Pattern Mode' : (p.extremeConfidence < 50 ? 'Fallback Mode' : 'No Data');
+                
+                // ===== AI-C Update =====
+                document.getElementById('aiCInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
+                document.getElementById('aiCPred').innerHTML = `${p.lowMid || 'MEDIUM'}`;
+                document.getElementById('aiCConf').innerHTML = `${p.lowMidConfidence || 0}%`;
+                document.getElementById('aiCPattern').innerHTML = p.lowMidPattern || (p.lowMid !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
+                document.getElementById('aiCMode').innerHTML = p.lowMid !== 'MEDIUM' ? 'Pattern Mode' : (p.lowMidConfidence < 50 ? 'Fallback Mode' : 'No Data');
+                
+                // ===== AI-D Update =====
+                document.getElementById('aiDInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
+                document.getElementById('aiDPred').innerHTML = `${p.midHigh || 'MEDIUM'}`;
+                document.getElementById('aiDConf').innerHTML = `${p.midHighConfidence || 0}%`;
+                document.getElementById('aiDPattern').innerHTML = p.midHighPattern || (p.midHigh !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
+                document.getElementById('aiDMode').innerHTML = p.midHigh !== 'MEDIUM' ? 'Pattern Mode' : (p.midHighConfidence < 50 ? 'Fallback Mode' : 'No Data');
+                
+                // ===== Fallback System Update =====
                 const isFallbackActive = (p.extreme === 'MEDIUM' && p.lowMid === 'MEDIUM' && p.midHigh === 'MEDIUM') || p.prediction === 'FALLBACK';
-                const badge = document.getElementById('fallbackModeBadge');
-                if (isFallbackActive) {
-                    badge.className = 'fallback-badge-active';
-                    badge.innerHTML = '⚠️ FALLBACK MODE ACTIVE';
-                } else {
-                    badge.className = 'fallback-badge-inactive';
-                    badge.innerHTML = '✅ PATTERN MODE ACTIVE';
-                }
+                document.getElementById('fallbackModeStatus').innerHTML = isFallbackActive ? '🟣 ACTIVE - Pattern not matched' : '🟢 INACTIVE - Pattern matched';
+                document.getElementById('fallbackModeStatus').style.color = isFallbackActive ? '#a78bfa' : '#10b981';
+                document.getElementById('fallbackLastPattern').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
                 
-                // Last Pattern
-                document.getElementById('lastPatternValue').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
-                
-                // Tracked Groups (from fallback tracking)
-                if (p.trackedGroups) {
-                    document.getElementById('trackedLow').textContent = p.trackedGroups.LOW || 0;
-                    document.getElementById('trackedMedium').textContent = p.trackedGroups.MEDIUM || 0;
-                    document.getElementById('trackedHigh').textContent = p.trackedGroups.HIGH || 0;
+                // Tracked Groups
+                if(p.trackedGroups) {
+                    document.getElementById('trackedLow').innerHTML = p.trackedGroups.LOW || 0;
+                    document.getElementById('trackedMedium').innerHTML = p.trackedGroups.MEDIUM || 0;
+                    document.getElementById('trackedHigh').innerHTML = p.trackedGroups.HIGH || 0;
                     const total = (p.trackedGroups.LOW||0) + (p.trackedGroups.MEDIUM||0) + (p.trackedGroups.HIGH||0);
-                    document.getElementById('trackedTotal').textContent = total;
+                    document.getElementById('trackedTotal').innerHTML = total;
                     
-                    // Most common group
                     let maxGroup = 'MEDIUM', maxCount = 0;
-                    if ((p.trackedGroups.LOW||0) > maxCount) { maxCount = p.trackedGroups.LOW; maxGroup = 'LOW'; }
-                    if ((p.trackedGroups.MEDIUM||0) > maxCount) { maxCount = p.trackedGroups.MEDIUM; maxGroup = 'MEDIUM'; }
-                    if ((p.trackedGroups.HIGH||0) > maxCount) { maxCount = p.trackedGroups.HIGH; maxGroup = 'HIGH'; }
+                    if((p.trackedGroups.LOW||0) > maxCount) { maxCount = p.trackedGroups.LOW; maxGroup = 'LOW'; }
+                    if((p.trackedGroups.MEDIUM||0) > maxCount) { maxCount = p.trackedGroups.MEDIUM; maxGroup = 'MEDIUM'; }
+                    if((p.trackedGroups.HIGH||0) > maxCount) { maxCount = p.trackedGroups.HIGH; maxGroup = 'HIGH'; }
                     document.getElementById('mostCommonGroup').innerHTML = maxGroup;
-                    document.getElementById('mostCommonCount').innerHTML = `(${maxCount} বার)`;
-                } else {
-                    document.getElementById('trackedLow').textContent = '0';
-                    document.getElementById('trackedMedium').textContent = '0';
-                    document.getElementById('trackedHigh').textContent = '0';
-                    document.getElementById('trackedTotal').textContent = '0';
+                    document.getElementById('mostCommonCount').innerHTML = maxCount;
                 }
                 
                 // Scores
-                if (p.fallbackScores) {
-                    document.getElementById('scoreLow').textContent = p.fallbackScores.LOW || 40;
-                    document.getElementById('scoreMedium').textContent = p.fallbackScores.MEDIUM || 40;
-                    document.getElementById('scoreHigh').textContent = p.fallbackScores.HIGH || 40;
+                if(p.fallbackScores) {
+                    document.getElementById('scoreLow').innerHTML = p.fallbackScores.LOW || 40;
+                    document.getElementById('scoreMedium').innerHTML = p.fallbackScores.MEDIUM || 40;
+                    document.getElementById('scoreHigh').innerHTML = p.fallbackScores.HIGH || 40;
                 }
                 
                 // Fallback Prediction
-                let fallbackPred = p.ensemble || 'MEDIUM';
-                document.getElementById('fallbackPredictionGroup').innerHTML = fallbackPred;
-                
-                // Prediction reason
+                const fallbackPred = p.ensemble || 'MEDIUM';
+                document.getElementById('fallbackPrediction').innerHTML = fallbackPred;
                 let reason = '';
-                let scoreInfo = '';
-                if (p.trackedGroups && (p.trackedGroups.LOW + p.trackedGroups.MEDIUM + p.trackedGroups.HIGH) > 0) {
-                    reason = `📊 লাস্ট প্যাটার্নের পর থেকে সবচেয়ে বেশি এসেছে ${document.getElementById('mostCommonGroup').innerHTML} (${document.getElementById('mostCommonCount').innerHTML}) → তাই ঐ গ্রুপ প্রেডিক্ট করছে`;
+                if(p.trackedGroups && (p.trackedGroups.LOW + p.trackedGroups.MEDIUM + p.trackedGroups.HIGH) > 0) {
+                    reason = `📊 Data: Most common = ${document.getElementById('mostCommonGroup').innerHTML} (${document.getElementById('mostCommonCount').innerHTML} times) → Score adjusted prediction`;
                 } else {
-                    reason = `⚠️ এখনো পর্যাপ্ত ট্র্যাকড ডাটা নেই, Fallback Scores দেখে প্রেডিক্ট করছে`;
+                    reason = `⚠️ No tracked data yet, using Score System: ${fallbackPred} has highest score`;
+                }
+                document.getElementById('fallbackReason').innerHTML = reason;
+                
+                // ===== Ensemble Update =====
+                document.getElementById('ensemblePred').innerHTML = p.ensemble || 'MEDIUM';
+                document.getElementById('ensembleConf').innerHTML = `${p.ensembleConfidence || 0}%`;
+                document.getElementById('ensembleAgreement').innerHTML = `${p.agreement || 0}/4`;
+                if(p.weights) {
+                    const w = p.weights;
+                    document.getElementById('ensembleWeights').innerHTML = `S:${Math.round(w.stick*100)}% E:${Math.round(w.extreme*100)}% L:${Math.round(w.lowMid*100)}% M:${Math.round(w.midHigh*100)}%`;
+                }
+                if(p.scores) {
+                    document.getElementById('ensembleScores').innerHTML = `LOW:${Math.round(p.scores.LOW || 0)} | MEDIUM:${Math.round(p.scores.MEDIUM || 0)} | HIGH:${Math.round(p.scores.HIGH || 0)}`;
                 }
                 
-                if (p.fallbackScores) {
-                    let highScoreGroup = 'MEDIUM', highScore = 0;
-                    if ((p.fallbackScores.LOW||0) > highScore) { highScore = p.fallbackScores.LOW; highScoreGroup = 'LOW'; }
-                    if ((p.fallbackScores.MEDIUM||0) > highScore) { highScore = p.fallbackScores.MEDIUM; highScoreGroup = 'MEDIUM'; }
-                    if ((p.fallbackScores.HIGH||0) > highScore) { highScore = p.fallbackScores.HIGH; highScoreGroup = 'HIGH'; }
-                    scoreInfo = `🎯 Score System: ${highScoreGroup} গ্রুপের স্কোর সবচেয়ে বেশি (${highScore})`;
-                }
-                
-                document.getElementById('predictionReason').innerHTML = reason;
-                document.getElementById('scoreAdjustmentInfo').innerHTML = scoreInfo;
-                
-                // Update AI displays
-                document.getElementById('aiAPredict').innerHTML = `${p.stick} (${p.stickConfidence}%)`;
-                document.getElementById('aiBPredict').innerHTML = `${p.extreme} (${p.extremeConfidence}%)`;
-                document.getElementById('aiCPredict').innerHTML = `${p.lowMid} (${p.lowMidConfidence}%)`;
-                document.getElementById('aiDPredict').innerHTML = `${p.midHigh} (${p.midHighConfidence}%)`;
-                
-                // AI Modes
-                const setMode = (id, isFallback, isMedium) => {
-                    const el = document.getElementById(id);
-                    if (isFallback) { el.innerHTML = '🔄 Fallback'; el.className = 'status-badge status-fallback'; }
-                    else if (isMedium) { el.innerHTML = '⚠️ Always MEDIUM'; el.className = 'status-badge status-medium'; }
-                    else { el.innerHTML = '✅ Pattern'; el.className = 'status-badge status-working'; }
-                };
-                
-                setMode('aiAStatus', false, p.stick === 'MEDIUM' && p.stickConfidence < 50);
-                setMode('aiBStatus', p.extreme === 'MEDIUM' && p.extremeConfidence < 50 && (p.trackedGroups && (p.trackedGroups.LOW+p.trackedGroups.MEDIUM+p.trackedGroups.HIGH) > 0), p.extreme === 'MEDIUM');
-                setMode('aiCStatus', p.lowMid === 'MEDIUM' && p.lowMidConfidence < 50, p.lowMid === 'MEDIUM');
-                setMode('aiDStatus', p.midHigh === 'MEDIUM' && p.midHighConfidence < 50, p.midHigh === 'MEDIUM');
-                
-                document.getElementById('aiAMode').innerHTML = (p.stick === 'MEDIUM' && p.stickConfidence < 50) ? 'Fallback Mode' : 'Pattern Mode';
-                document.getElementById('aiBMode').innerHTML = (p.extreme === 'MEDIUM' && p.extremeConfidence < 50) ? 'Fallback Mode' : (p.extreme !== 'MEDIUM' ? 'Pattern Mode' : 'No Data');
-                document.getElementById('aiCMode').innerHTML = (p.lowMid === 'MEDIUM' && p.lowMidConfidence < 50) ? 'Fallback Mode' : (p.lowMid !== 'MEDIUM' ? 'Pattern Mode' : 'No Data');
-                document.getElementById('aiDMode').innerHTML = (p.midHigh === 'MEDIUM' && p.midHighConfidence < 50) ? 'Fallback Mode' : (p.midHigh !== 'MEDIUM' ? 'Pattern Mode' : 'No Data');
-                
-                document.getElementById('aiBPattern').innerHTML = p.extremePattern || (p.extreme !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
-                document.getElementById('aiCPattern').innerHTML = p.lowMidPattern || (p.lowMid !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
-                document.getElementById('aiDPattern').innerHTML = p.midHighPattern || (p.midHigh !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
-                
-                // Fetch stats
+                // ===== Stats Update =====
                 const statsRes = await fetch(`${API_BASE}/stats`);
                 const stats = await statsRes.json();
-                document.getElementById('totalResults').textContent = stats.totalRounds || 0;
-                document.getElementById('ensembleAccuracy').textContent = '--';
-                document.getElementById('serverStatus').textContent = '🟢 Online';
+                document.getElementById('totalResults').innerHTML = stats.totalRounds || 0;
+                document.getElementById('serverStatus').innerHTML = '🟢 Online';
+                
+                const predRes = await fetch(`${API_BASE}/predictions?limit=100`);
+                const predictions = await predRes.json();
+                document.getElementById('totalPredictions').innerHTML = Array.isArray(predictions) ? predictions.length : 0;
+                
+                const aiStatsRes = await fetch(`${API_BASE}/ai-stats`);
+                const aiStats = await aiStatsRes.json();
+                const ensembleStat = aiStats.find(s => s.ai_name === 'EnsembleVoter');
+                if(ensembleStat) document.getElementById('ensembleAccuracy').innerHTML = ensembleStat.accuracy ? ensembleStat.accuracy.toFixed(1) : '--';
+                const stickStat = aiStats.find(s => s.ai_name === 'AI_Stick');
+                if(stickStat) document.getElementById('aiAAcc').innerHTML = `${stickStat.accuracy ? stickStat.accuracy.toFixed(1) : 0}%`;
                 
                 return p;
             }
-        } catch(e) { addLog(`Error: ${e.message}`, 'error'); }
+        } catch(e) {
+            addLog(`Error: ${e.message}`, 'error');
+        }
         return null;
     }
 
+    // Test All Functions
     async function runAllTests() {
-        addLog('🚀 Starting diagnostic...', 'info');
+        addLog('🚀 Starting full system diagnostic...', 'info');
+        addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        
         await fetchAndUpdate();
+        
+        addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         addLog('✅ Diagnostic complete!', 'success');
+        addLog('💡 Tip: AI-B, C, D show MEDIUM until enough pattern data collected (50-100 results needed)', 'info');
     }
 
-    function testPrediction() { addLog('🎯 Check prediction above in Fallback System display', 'info'); fetchAndUpdate(); }
-    function forceRefresh() { addLog('🔄 Force refreshing...', 'info'); fetchAndUpdate(); }
-    function clearConsole() { document.getElementById('consoleContent').innerHTML = '<div class="console-line">Console cleared.</div>'; }
+    function testPrediction() { addLog('🎯 Testing live prediction...', 'info'); fetchAndUpdate(); }
+    function forceRefresh() { addLog('🔄 Force refreshing all data...', 'info'); fetchAndUpdate(); addLog('✅ Data refreshed', 'success'); }
+    function clearConsole() { document.getElementById('consoleContent').innerHTML = '<div class="console-line">Console cleared. Real-time updates active...</div>'; addLog('Console cleared', 'info'); }
 
+    // WebSocket Setup
     function setupWebSocket() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${protocol}//${location.host}`);
+        
         ws.onopen = () => {
             document.getElementById('wsStatusDot').className = 'ws-status ws-connected';
-            document.getElementById('wsStatusText').innerHTML = 'Live Updates Active';
+            document.getElementById('wsStatusText').innerHTML = 'Connected';
             addLog('🔌 WebSocket connected - Real-time updates active', 'success');
         };
-        ws.onmessage = (e) => { try { const data = JSON.parse(e.data); if(data.type === 'new_result') { addLog('🔄 Real-time update received', 'info'); fetchAndUpdate(); } } catch(ex) {} };
+        
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if(data.type === 'new_result') {
+                    addLog('🔄 Real-time update: New result detected', 'info');
+                    fetchAndUpdate();
+                    document.getElementById('lastUpdateTime').style.color = '#10b981';
+                    setTimeout(() => { document.getElementById('lastUpdateTime').style.color = '#fbbf24'; }, 500);
+                }
+            } catch(e) {}
+        };
+        
+        ws.onerror = () => {
+            document.getElementById('wsStatusDot').className = 'ws-status ws-disconnected';
+            document.getElementById('wsStatusText').innerHTML = 'Error';
+            addLog('⚠️ WebSocket error occurred', 'warning');
+        };
+        
         ws.onclose = () => {
             document.getElementById('wsStatusDot').className = 'ws-status ws-disconnected';
             document.getElementById('wsStatusText').innerHTML = 'Disconnected';
+            addLog('🔌 WebSocket disconnected - Reconnecting...', 'warning');
             setTimeout(setupWebSocket, 3000);
         };
     }
 
+    // Event Listeners
     document.getElementById('testAllBtn').onclick = runAllTests;
-    document.getElementById('fetchStatusBtn').onclick = () => { fetchAndUpdate(); addLog('📡 Status refreshed'); };
+    document.getElementById('fetchStatusBtn').onclick = () => { fetchAndUpdate(); addLog('📡 Status fetched', 'info'); };
     document.getElementById('testPredictionBtn').onclick = testPrediction;
     document.getElementById('forceRefreshBtn').onclick = forceRefresh;
     document.getElementById('clearConsoleBtn').onclick = clearConsole;
     document.getElementById('clearConsoleBtn2').onclick = clearConsole;
     
+    // Initialize
     setupWebSocket();
     setTimeout(runAllTests, 1000);
     setInterval(fetchAndUpdate, 10000);
