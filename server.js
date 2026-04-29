@@ -1,7 +1,7 @@
 // ============================================================
-// COMPLETE server.js (FIXED: Full AI State Export for Debug Dashboard)
-// Four AI Pattern Recognition System + Telegram Alert (4 consecutive misses)
-// Now exports complete AI patterns, scores, and tracking data
+// COMPLETE server.js (UPDATED FOR v6.0)
+// Four AI Pattern Recognition System - New Version
+// Features: Length-wise tracking (1-18), Score System (+25/-25), Fallback Mode (15 results)
 // ============================================================
 
 // Fix memory leak warnings
@@ -19,7 +19,7 @@ const sqlite3 = require('sqlite3').verbose();
 const WebSocket = require('ws');
 const fs = require('fs');
 
-// Import Server AI Logic
+// Import Server AI Logic (NEW v6.0)
 const {
     ServerAI_Stick,
     ServerAI_ExtremeSwitch,
@@ -141,7 +141,7 @@ db.serialize(() => {
     console.log('✅ Database tables created/verified');
 });
 
-// Initialize Server AI Models
+// Initialize Server AI Models (NEW v6.0)
 const serverAI = {
     stick: new ServerAI_Stick(),
     extreme: new ServerAI_ExtremeSwitch(),
@@ -161,7 +161,7 @@ app.use(express.static('public'));
 
 // WebSocket Server
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor - WebSocket Optimized`);
+    console.log(`\n⚡ Lightning Dice Predictor v6.0 - WebSocket Optimized`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`🚀 Server running on port ${PORT}\n`);
     loadServerAIState();
@@ -286,11 +286,13 @@ async function trainAllServerAIs() {
             const history = results.map(r => ({ group: r.group_name, id: r.id }));
             console.log(`📚 Training server AI models with ${history.length} historical results...`);
             
+            // Train all 4 AIs
             serverAI.stick.train(history);
             serverAI.extreme.train(history);
             serverAI.lowMid.train(history);
             serverAI.midHigh.train(history);
             
+            // Update ensemble weights based on accuracy
             serverAI.ensemble.updateWeights(
                 serverAI.stick.getAccuracy(),
                 serverAI.extreme.getAccuracy(),
@@ -411,7 +413,7 @@ function getAIStatsData() {
     });
 }
 
-function getPreviousResultsForPrediction(limit = 5) {
+function getPreviousResultsForPrediction(limit = 10) {
     return new Promise((resolve) => {
         db.all(`SELECT group_name as group_value, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
             if (err) {
@@ -433,7 +435,7 @@ function getPreviousResultsForPrediction(limit = 5) {
 
 // ============ ENHANCED: getCurrentPredictionData with FULL AI STATE ============
 async function getCurrentPredictionData() {
-    const previousResults = await getPreviousResultsForPrediction(5);
+    const previousResults = await getPreviousResultsForPrediction(10);
     if (previousResults.length < 2) {
         console.log(`⚠️ Not enough history for prediction (got ${previousResults.length}, need 2)`);
         return {
@@ -452,12 +454,11 @@ async function getCurrentPredictionData() {
             previousGroup: previousResults[1]?.group || '?',
             fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 },
             weights: { stick: 0.25, extreme: 0.25, lowMid: 0.25, midHigh: 0.25 },
-            // FULL AI STATE for debug dashboard
             aiState: {
-                stick: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } },
-                extreme: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } },
-                lowMid: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } },
-                midHigh: { patterns: {}, patternScores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 } } }
+                stick: { patterns: {}, scores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 }, totalTracked: 0, maxTrackLimit: 15 }, accuracy: 0 },
+                extreme: { patterns: {}, scores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 }, totalTracked: 0, maxTrackLimit: 15 }, accuracy: 0 },
+                lowMid: { patterns: {}, scores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 }, totalTracked: 0, maxTrackLimit: 15 }, accuracy: 0 },
+                midHigh: { patterns: {}, scores: {}, fallbackScores: { LOW: 40, MEDIUM: 40, HIGH: 40 }, fallbackTracking: { active: false, lastPattern: null, trackedGroups: { LOW: 0, MEDIUM: 0, HIGH: 0 }, totalTracked: 0, maxTrackLimit: 15 }, accuracy: 0 }
             }
         };
     }
@@ -467,65 +468,33 @@ async function getCurrentPredictionData() {
     
     console.log(`🔮 Making prediction with current: ${currentGroup}, previous: ${previousGroup}`);
     
+    // Get predictions from all 4 AIs
     const predStick = serverAI.stick.predict(currentGroup, previousGroup);
     const predExtreme = serverAI.extreme.predict(currentGroup, previousGroup);
     const predLowMid = serverAI.lowMid.predict(currentGroup, previousGroup);
     const predMidHigh = serverAI.midHigh.predict(currentGroup, previousGroup);
     
-    let stickGroup = currentGroup;
-    if (predStick.prediction === "STICK") {
-        stickGroup = predStick.nextGroup || currentGroup;
-    } else if (predStick.prediction === "SWITCH") {
-        stickGroup = predStick.nextGroup || 'MEDIUM';
-    }
+    // Extract predicted groups
+    let stickGroup = predStick.nextGroup || currentGroup;
+    let extremeGroup = predExtreme.nextGroup || 'MEDIUM';
+    let lowMidGroup = predLowMid.nextGroup || 'MEDIUM';
+    let midHighGroup = predMidHigh.nextGroup || 'MEDIUM';
     
-    let extremeGroup = 'MEDIUM';
-    if (predExtreme.prediction === "CONTINUE" && predExtreme.pattern) {
-        const parts = predExtreme.pattern.split("→");
-        extremeGroup = parts[1]?.trim() || 'MEDIUM';
-    } else if (predExtreme.prediction === "BREAK") {
-        extremeGroup = predExtreme.nextGroup || 'MEDIUM';
-    }
-    
-    let lowMidGroup = 'MEDIUM';
-    if (predLowMid.prediction === "CONTINUE" && predLowMid.pattern) {
-        const parts = predLowMid.pattern.split("→");
-        lowMidGroup = parts[1]?.trim() || 'MEDIUM';
-    } else if (predLowMid.prediction === "BREAK") {
-        lowMidGroup = predLowMid.nextGroup || 'MEDIUM';
-    }
-    
-    let midHighGroup = 'MEDIUM';
-    if (predMidHigh.prediction === "CONTINUE" && predMidHigh.pattern) {
-        const parts = predMidHigh.pattern.split("→");
-        midHighGroup = parts[1]?.trim() || 'MEDIUM';
-    } else if (predMidHigh.prediction === "BREAK") {
-        midHighGroup = predMidHigh.nextGroup || 'MEDIUM';
-    }
-    
+    // Get ensemble result
     const ensembleResult = serverAI.ensemble.combine(predStick, predExtreme, predLowMid, predMidHigh);
     const ensembleGroup = ensembleResult.final.group;
     
-    // ========== FALLBACK SCORES from all AIs ==========
-    const fallbackScores = {
-        LOW: serverAI.extreme?.fallbackScores?.LOW || 40,
-        MEDIUM: serverAI.extreme?.fallbackScores?.MEDIUM || 40,
-        HIGH: serverAI.extreme?.fallbackScores?.HIGH || 40
-    };
+    // Get fallback scores (using extreme AI's fallback as reference)
+    const fallbackScores = serverAI.extreme.fallbackScores || { LOW: 40, MEDIUM: 40, HIGH: 40 };
     
-    // ========== WEIGHTS from ensemble ==========
-    const weights = ensembleResult.weights || {
-        stick: 0.25,
-        extreme: 0.25,
-        lowMid: 0.25,
-        midHigh: 0.25
-    };
+    // Get weights from ensemble
+    const weights = ensembleResult.weights || { stick: 0.25, extreme: 0.25, lowMid: 0.25, midHigh: 0.25 };
     
-    // ========== EXPORT COMPLETE AI STATE FOR DEBUG DASHBOARD ==========
+    // Export complete AI state for debug dashboard
     const aiState = {
         stick: {
             patterns: serverAI.stick.patterns,
-            patternScores: serverAI.stick.patternScores,
+            scores: serverAI.stick.scores,
             fallbackScores: serverAI.stick.fallbackScores,
             fallbackTracking: serverAI.stick.fallbackTracking,
             currentPatternKey: serverAI.stick.currentPatternKey,
@@ -534,7 +503,7 @@ async function getCurrentPredictionData() {
         },
         extreme: {
             patterns: serverAI.extreme.patterns,
-            patternScores: serverAI.extreme.patternScores,
+            scores: serverAI.extreme.scores,
             fallbackScores: serverAI.extreme.fallbackScores,
             fallbackTracking: serverAI.extreme.fallbackTracking,
             currentPatternKey: serverAI.extreme.currentPatternKey,
@@ -543,7 +512,7 @@ async function getCurrentPredictionData() {
         },
         lowMid: {
             patterns: serverAI.lowMid.patterns,
-            patternScores: serverAI.lowMid.patternScores,
+            scores: serverAI.lowMid.scores,
             fallbackScores: serverAI.lowMid.fallbackScores,
             fallbackTracking: serverAI.lowMid.fallbackTracking,
             currentPatternKey: serverAI.lowMid.currentPatternKey,
@@ -552,7 +521,7 @@ async function getCurrentPredictionData() {
         },
         midHigh: {
             patterns: serverAI.midHigh.patterns,
-            patternScores: serverAI.midHigh.patternScores,
+            scores: serverAI.midHigh.scores,
             fallbackScores: serverAI.midHigh.fallbackScores,
             fallbackTracking: serverAI.midHigh.fallbackTracking,
             currentPatternKey: serverAI.midHigh.currentPatternKey,
@@ -561,9 +530,6 @@ async function getCurrentPredictionData() {
         }
     };
     
-    // Get tracked groups for display (from fallbackTracking)
-    const trackedGroups = serverAI.extreme.fallbackTracking?.trackedGroups || { LOW: 0, MEDIUM: 0, HIGH: 0 };
-    
     return {
         // Basic prediction data
         stick: stickGroup,
@@ -571,10 +537,10 @@ async function getCurrentPredictionData() {
         lowMid: lowMidGroup,
         midHigh: midHighGroup,
         ensemble: ensembleGroup,
-        stickConfidence: predStick.confidence || 65,
-        extremeConfidence: predExtreme.confidence || 65,
-        lowMidConfidence: predLowMid.confidence || 65,
-        midHighConfidence: predMidHigh.confidence || 65,
+        stickConfidence: predStick.confidence || 50,
+        extremeConfidence: predExtreme.confidence || 50,
+        lowMidConfidence: predLowMid.confidence || 50,
+        midHighConfidence: predMidHigh.confidence || 50,
         ensembleConfidence: ensembleResult.final.confidence,
         agreement: ensembleResult.final.agreement,
         currentGroup: currentGroup,
@@ -583,7 +549,6 @@ async function getCurrentPredictionData() {
         // Score and weight data
         fallbackScores: fallbackScores,
         weights: weights,
-        trackedGroups: trackedGroups,
         
         // Pattern detection status
         stickPattern: predStick.pattern || null,
@@ -595,7 +560,7 @@ async function getCurrentPredictionData() {
         lowMidPredictionType: predLowMid.prediction,
         midHighPredictionType: predMidHigh.prediction,
         
-        // ========== COMPLETE AI STATE FOR DEBUG DASHBOARD ==========
+        // Complete AI state for debug dashboard
         aiState: aiState,
         
         // Individual AI scores for ensemble display
@@ -1189,9 +1154,10 @@ setInterval(collectData, 3000);
 collectData();
 
 console.log('📊 Background data collection started (every 3 seconds)');
-console.log('🤖 Server-side AI prediction engine active');
+console.log('🤖 Server-side AI prediction engine v6.0 active');
 console.log('🔌 WebSocket server ready for real-time updates');
 console.log('🤖 Telegram notification active (triggers after 4 consecutive Ensemble misses)');
+console.log('📈 Features: Length-wise tracking (1-18) | Score System (+25/-25) | Fallback Mode (15 results)');
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
