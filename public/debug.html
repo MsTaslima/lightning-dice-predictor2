@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lightning Dice - Complete AI Debug Dashboard</title>
+    <title>Lightning Dice - Complete AI Debug Dashboard v6.0</title>
     <style>
         * {
             margin: 0;
@@ -20,7 +20,6 @@
             position: relative;
         }
         
-        /* Animated background effect */
         body::before {
             content: '';
             position: fixed;
@@ -41,7 +40,6 @@
             z-index: 1;
         }
 
-        /* Header */
         .header {
             text-align: center;
             margin-bottom: 30px;
@@ -67,7 +65,6 @@
             font-size: 14px;
         }
 
-        /* Control Bar */
         .control-bar {
             display: flex;
             gap: 12px;
@@ -88,13 +85,12 @@
         }
 
         .btn-primary { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #1a1a2e; box-shadow: 0 4px 15px rgba(251,191,36,0.3); }
-        .btn-info { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; box-shadow: 0 4px 15px rgba(59,130,246,0.3); }
-        .btn-success { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 15px rgba(16,185,129,0.3); }
-        .btn-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; box-shadow: 0 4px 15px rgba(245,158,11,0.3); }
-        .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; box-shadow: 0 4px 15px rgba(239,68,68,0.3); }
-        .btn:hover { transform: translateY(-3px); opacity: 0.95; box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+        .btn-info { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+        .btn-success { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+        .btn-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+        .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        .btn:hover { transform: translateY(-3px); opacity: 0.95; }
 
-        /* Status Bar */
         .status-bar {
             background: rgba(15, 23, 42, 0.7);
             backdrop-filter: blur(10px);
@@ -116,7 +112,6 @@
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
         @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 
-        /* Stats Grid */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -136,14 +131,12 @@
 
         .stat-card:hover {
             transform: translateY(-5px);
-            background: linear-gradient(135deg, rgba(30, 27, 75, 0.8), rgba(49, 46, 129, 0.8));
             border-color: rgba(251,191,36,0.3);
         }
 
         .stat-card h4 { font-size: 13px; opacity: 0.7; margin-bottom: 10px; letter-spacing: 1px; }
         .stat-value { font-size: 32px; font-weight: 800; background: linear-gradient(135deg, #fff, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
-        /* Main Grid */
         .dashboard-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -151,7 +144,6 @@
             margin-bottom: 30px;
         }
 
-        /* Card Style */
         .card {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(30, 27, 75, 0.6));
             backdrop-filter: blur(10px);
@@ -176,7 +168,6 @@
 
         .card-body { padding: 20px; }
 
-        /* AI specific border colors */
         .ai-stick .card-header { border-bottom-color: #3b82f6; }
         .ai-extreme .card-header { border-bottom-color: #a78bfa; }
         .ai-lowmid .card-header { border-bottom-color: #f59e0b; }
@@ -184,7 +175,6 @@
         .fallback-card .card-header { border-bottom-color: #ef4444; }
         .ensemble-card .card-header { border-bottom-color: #fbbf24; }
 
-        /* Pattern Table */
         .pattern-table {
             width: 100%;
             font-size: 11px;
@@ -197,7 +187,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.08);
         }
 
-        .pattern-table th { background: rgba(0,0,0,0.3); font-weight: 600; border-radius: 8px; }
+        .pattern-table th { background: rgba(0,0,0,0.3); font-weight: 600; }
 
         .group-badge {
             display: inline-block;
@@ -225,7 +215,6 @@
             font-weight: 800;
         }
 
-        /* Fallback Section */
         .fallback-stats {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -238,14 +227,12 @@
             background: rgba(0,0,0,0.3);
             padding: 12px;
             border-radius: 14px;
-            transition: all 0.3s ease;
         }
 
-        .fallback-score:hover { transform: scale(1.02); background: rgba(0,0,0,0.4); }
         .fallback-score .score-num { font-size: 28px; font-weight: 800; }
-        .fallback-score.low .score-num { color: #ef4444; text-shadow: 0 0 10px rgba(239,68,68,0.3); }
-        .fallback-score.medium .score-num { color: #fbbf24; text-shadow: 0 0 10px rgba(251,191,36,0.3); }
-        .fallback-score.high .score-num { color: #10b981; text-shadow: 0 0 10px rgba(16,185,129,0.3); }
+        .fallback-score.low .score-num { color: #ef4444; }
+        .fallback-score.medium .score-num { color: #fbbf24; }
+        .fallback-score.high .score-num { color: #10b981; }
 
         .tracked-box {
             background: rgba(0,0,0,0.3);
@@ -261,7 +248,6 @@
             font-weight: 800;
         }
 
-        /* Console */
         .console-log {
             background: rgba(0,0,0,0.5);
             backdrop-filter: blur(5px);
@@ -282,18 +268,14 @@
         .console-content {
             height: 200px;
             overflow-y: auto;
-            font-family: 'Fira Code', monospace;
+            font-family: monospace;
             font-size: 12px;
         }
 
-        .console-line { 
-            padding: 5px 8px; 
-            color: #4ade80; 
-            border-bottom: 1px solid rgba(255,255,255,0.03);
-            font-family: monospace;
-        }
+        .console-line { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); font-family: monospace; }
         .console-line.error { color: #ef4444; }
         .console-line.warning { color: #fbbf24; }
+        .console-line.success { color: #4ade80; }
         .console-line.info { color: #60a5fa; }
 
         .clear-console {
@@ -303,11 +285,9 @@
             border-radius: 10px;
             color: white;
             cursor: pointer;
-            transition: all 0.2s;
         }
         .clear-console:hover { background: rgba(255,255,255,0.2); }
 
-        /* Responsive */
         @media (max-width: 1000px) {
             .dashboard-grid { grid-template-columns: 1fr; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -316,15 +296,8 @@
         @media (max-width: 600px) {
             .stats-grid { grid-template-columns: 1fr; }
             body { padding: 10px; }
-            .container { padding: 0; }
         }
-        
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 10px; }
-        ::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 10px; }
-        
-        /* Loading animation */
+
         .loading-spinner {
             display: inline-block;
             width: 12px;
@@ -339,55 +312,48 @@
 </head>
 <body>
 <div class="container">
-    <!-- Header -->
     <div class="header">
-        <h1>⚡ Lightning Dice - Complete AI Debug Dashboard</h1>
-        <p>Four AI Pattern Recognition System | Length-wise Tracking | Fallback Score System | Real-time Analytics</p>
+        <h1>⚡ Lightning Dice - AI Debug Dashboard v6.0</h1>
+        <p>নয়টি প্যাটার্ন | লেনথ-ওয়াইজ ট্র্যাকিং (১-১৮) | +২৫/-২৫ স্কোর সিস্টেম | ফলব্যাক মোড (১৫টি ডাটা)</p>
     </div>
 
-    <!-- Control Bar -->
     <div class="control-bar">
-        <button class="btn btn-primary" id="testAllBtn">🧪 Run Full Diagnostic</button>
-        <button class="btn btn-info" id="fetchStatusBtn">📡 Fetch Status</button>
-        <button class="btn btn-success" id="testPredictionBtn">🎯 Test Prediction</button>
-        <button class="btn btn-warning" id="forceRefreshBtn">🔄 Force Refresh</button>
-        <button class="btn btn-danger" id="clearConsoleBtn">🗑 Clear Console</button>
+        <button class="btn btn-primary" id="testAllBtn">🧪 ডায়াগনস্টিক রান করুন</button>
+        <button class="btn btn-info" id="fetchStatusBtn">📡 স্ট্যাটাস নিন</button>
+        <button class="btn btn-success" id="testPredictionBtn">🎯 টেস্ট প্রেডিকশন</button>
+        <button class="btn btn-warning" id="forceRefreshBtn">🔄 রিফ্রেশ</button>
+        <button class="btn btn-danger" id="clearConsoleBtn">🗑 কনসোল ক্লিয়ার</button>
     </div>
 
-    <!-- Status Bar -->
     <div class="status-bar">
         <div><span class="ws-status" id="wsStatusDot"></span><span id="wsStatusText">Connecting...</span><span class="live-badge" id="liveBadge">LIVE</span></div>
-        <div>🕐 Last Update: <span id="lastUpdateTime" style="color:#fbbf24; font-weight:600;">--:--:--</span></div>
-        <div>📡 Auto Refresh: <span id="autoRefreshStatus" style="color:#10b981;">WebSocket Active</span></div>
+        <div>🕐 শেষ আপডেট: <span id="lastUpdateTime" style="color:#fbbf24; font-weight:600;">--:--:--</span></div>
+        <div>📡 অটো রিফ্রেশ: <span id="autoRefreshStatus" style="color:#10b981;">WebSocket Active</span></div>
     </div>
 
-    <!-- Stats Grid -->
     <div class="stats-grid">
-        <div class="stat-card"><h4>📊 Total Results</h4><div class="stat-value" id="totalResults">0</div></div>
-        <div class="stat-card"><h4>📈 Total Predictions</h4><div class="stat-value" id="totalPredictions">0</div></div>
+        <div class="stat-card"><h4>📊 মোট রেজাল্ট</h4><div class="stat-value" id="totalResults">0</div></div>
+        <div class="stat-card"><h4>📈 মোট প্রেডিকশন</h4><div class="stat-value" id="totalPredictions">0</div></div>
         <div class="stat-card"><h4>🎯 Ensemble Accuracy</h4><div class="stat-value" id="ensembleAccuracy">--<span style="font-size:16px;">%</span></div></div>
-        <div class="stat-card"><h4>🟢 Server Status</h4><div class="stat-value" id="serverStatus">🟢 Online</div></div>
+        <div class="stat-card"><h4>🟢 সার্ভার স্ট্যাটাস</h4><div class="stat-value" id="serverStatus">🟢 Online</div></div>
     </div>
 
-    <!-- Main Dashboard Grid -->
     <div class="dashboard-grid">
-        
         <!-- AI-A: Stick Detector -->
         <div class="card ai-stick">
-            <div class="card-header">🎯 AI-A: Stick Detector (LOW→LOW / MEDIUM→MEDIUM / HIGH→HIGH)</div>
+            <div class="card-header">🎯 AI-A: Stick Detector (LOW→LOW / MED→MED / HIGH→HIGH)</div>
             <div class="card-body">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <span>📌 Pattern: <strong id="aiAInput" style="color:#60a5fa;">-- → --</strong></span>
-                    <span>🎲 Prediction: <strong id="aiAPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
-                    <span>📊 Confidence: <strong id="aiAConf" style="color:#10b981;">--%</strong></span>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;">
+                    <span>📌 ইনপুট: <strong id="aiAInput" style="color:#60a5fa;">-- → --</strong></span>
+                    <span>🎲 প্রেডিকশন: <strong id="aiAPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
+                    <span>📊 কনফিডেন্স: <strong id="aiAConf" style="color:#10b981;">--%</strong></span>
                 </div>
-                <div style="font-size:12px; margin-bottom: 15px;">📈 Accuracy: <span id="aiAAcc" style="color:#a78bfa;">--%</span> | Mode: <span id="aiAMode" style="color:#fbbf24;">--</span></div>
-                
-                <div style="margin-top: 12px;">
-                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 Length-wise Pattern Data (LOW→LOW)</div>
+                <div style="font-size:12px; margin-bottom: 15px;">📈 একুরেসি: <span id="aiAAcc" style="color:#a78bfa;">--%</span> | মোড: <span id="aiAMode" style="color:#fbbf24;">--</span></div>
+                <div>
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 LOW→LOW প্যাটার্নের ডাটা</div>
                     <table class="pattern-table" id="aiAStickTable">
                         <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Conf</th></tr></thead>
-                        <tbody><tr><td colspan="6"><div class="loading-spinner" style="margin:10px auto;"></div> Loading...</td></tr></tbody>
+                        <tbody><tr><td colspan="6"><div class="loading-spinner"></div> Loading...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -397,15 +363,14 @@
         <div class="card ai-extreme">
             <div class="card-header">🔄 AI-B: Extreme Switch (HIGH↔LOW)</div>
             <div class="card-body">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <span>📌 Pattern: <strong id="aiBInput" style="color:#a78bfa;">-- → --</strong></span>
-                    <span>🎲 Prediction: <strong id="aiBPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
-                    <span>📊 Confidence: <strong id="aiBConf" style="color:#10b981;">--%</strong></span>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;">
+                    <span>📌 ইনপুট: <strong id="aiBInput" style="color:#a78bfa;">-- → --</strong></span>
+                    <span>🎲 প্রেডিকশন: <strong id="aiBPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
+                    <span>📊 কনফিডেন্স: <strong id="aiBConf" style="color:#10b981;">--%</strong></span>
                 </div>
-                <div style="font-size:12px; margin-bottom: 15px;">🎯 Pattern Detected: <span id="aiBPattern" style="color:#fbbf24;">--</span> | Mode: <span id="aiBMode" style="color:#a78bfa;">--</span></div>
-                
-                <div style="margin-top: 12px;">
-                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 Length-wise Pattern Data (HIGH→LOW)</div>
+                <div style="font-size:12px; margin-bottom: 15px;">🎯 একুরেসি: <span id="aiBAcc" style="color:#a78bfa;">--%</span> | মোড: <span id="aiBMode" style="color:#a78bfa;">--</span></div>
+                <div>
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 HIGH→LOW প্যাটার্নের ডাটা</div>
                     <table class="pattern-table" id="aiBTable">
                         <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Conf</th></tr></thead>
                         <tbody><tr><td colspan="6"><div class="loading-spinner"></div> Loading...</td></tr></tbody>
@@ -418,15 +383,14 @@
         <div class="card ai-lowmid">
             <div class="card-header">↗️ AI-C: Low-Mid Switch (LOW↔MEDIUM)</div>
             <div class="card-body">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <span>📌 Pattern: <strong id="aiCInput" style="color:#f59e0b;">-- → --</strong></span>
-                    <span>🎲 Prediction: <strong id="aiCPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
-                    <span>📊 Confidence: <strong id="aiCConf" style="color:#10b981;">--%</strong></span>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;">
+                    <span>📌 ইনপুট: <strong id="aiCInput" style="color:#f59e0b;">-- → --</strong></span>
+                    <span>🎲 প্রেডিকশন: <strong id="aiCPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
+                    <span>📊 কনফিডেন্স: <strong id="aiCConf" style="color:#10b981;">--%</strong></span>
                 </div>
-                <div style="font-size:12px; margin-bottom: 15px;">🎯 Pattern Detected: <span id="aiCPattern" style="color:#fbbf24;">--</span> | Mode: <span id="aiCMode" style="color:#f59e0b;">--</span></div>
-                
-                <div style="margin-top: 12px;">
-                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 Length-wise Pattern Data (LOW→MEDIUM)</div>
+                <div style="font-size:12px; margin-bottom: 15px;">🎯 একুরেসি: <span id="aiCAcc" style="color:#a78bfa;">--%</span> | মোড: <span id="aiCMode" style="color:#f59e0b;">--</span></div>
+                <div>
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 LOW→MEDIUM প্যাটার্নের ডাটা</div>
                     <table class="pattern-table" id="aiCTable">
                         <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Conf</th></tr></thead>
                         <tbody><tr><td colspan="6"><div class="loading-spinner"></div> Loading...</td></tr></tbody>
@@ -439,15 +403,14 @@
         <div class="card ai-midhigh">
             <div class="card-header">↘️ AI-D: Mid-High Switch (MEDIUM↔HIGH)</div>
             <div class="card-body">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <span>📌 Pattern: <strong id="aiDInput" style="color:#10b981;">-- → --</strong></span>
-                    <span>🎲 Prediction: <strong id="aiDPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
-                    <span>📊 Confidence: <strong id="aiDConf" style="color:#10b981;">--%</strong></span>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;">
+                    <span>📌 ইনপুট: <strong id="aiDInput" style="color:#10b981;">-- → --</strong></span>
+                    <span>🎲 প্রেডিকশন: <strong id="aiDPred" style="font-size:22px; color:#fbbf24;">--</strong></span>
+                    <span>📊 কনফিডেন্স: <strong id="aiDConf" style="color:#10b981;">--%</strong></span>
                 </div>
-                <div style="font-size:12px; margin-bottom: 15px;">🎯 Pattern Detected: <span id="aiDPattern" style="color:#fbbf24;">--</span> | Mode: <span id="aiDMode" style="color:#10b981;">--</span></div>
-                
-                <div style="margin-top: 12px;">
-                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 Length-wise Pattern Data (MEDIUM→HIGH)</div>
+                <div style="font-size:12px; margin-bottom: 15px;">🎯 একুরেসি: <span id="aiDAcc" style="color:#a78bfa;">--%</span> | মোড: <span id="aiDMode" style="color:#10b981;">--</span></div>
+                <div>
+                    <div style="font-size:11px; opacity:0.7; margin-bottom:8px;">📋 MEDIUM→HIGH প্যাটার্নের ডাটা</div>
                     <table class="pattern-table" id="aiDTable">
                         <thead><tr><th>Len</th><th>Total</th><th>→LOW</th><th>→MED</th><th>→HIGH</th><th>Conf</th></tr></thead>
                         <tbody><tr><td colspan="6"><div class="loading-spinner"></div> Loading...</td></tr></tbody>
@@ -457,36 +420,33 @@
         </div>
     </div>
 
-    <!-- FALLBACK SYSTEM CARD -->
+    <!-- FALLBACK SYSTEM -->
     <div class="card fallback-card" style="margin-bottom: 25px;">
-        <div class="card-header">⚠️ FALLBACK SYSTEM (প্যাটার্ন না মেললে এখান থেকে প্রেডিকশন)</div>
+        <div class="card-header">⚠️ FALLBACK সিস্টেম (প্যাটার্ন না মিললে এখান থেকে প্রেডিকশন)</div>
         <div class="card-body">
             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
-                <div><strong>📌 Last Pattern:</strong> <span id="fallbackLastPattern" style="color:#fbbf24; font-weight:600;">-- → --</span></div>
-                <div><strong>⚠️ Fallback Mode:</strong> <span id="fallbackModeStatus" style="color:#a78bfa;">CHECKING</span></div>
+                <div><strong>📌 লাস্ট প্যাটার্ন:</strong> <span id="fallbackLastPattern" style="color:#fbbf24; font-weight:600;">-- → --</span></div>
+                <div><strong>⚠️ ফলব্যাক মোড:</strong> <span id="fallbackModeStatus" style="color:#a78bfa;">CHECKING</span></div>
+                <div><strong>📊 ট্র্যাকড ডাটা:</strong> <span id="trackedCountDisplay" style="color:#10b981;">0/15</span></div>
             </div>
 
             <div class="tracked-box">
-                <div style="text-align:center; margin-bottom:10px;">📊 Tracked Data (লাস্ট প্যাটার্নের পর থেকে)</div>
+                <div style="text-align:center; margin-bottom:10px;">📈 লাস্ট প্যাটার্নের পর থেকে ট্র্যাক করা ডাটা (সর্বোচ্চ ১৫টি)</div>
                 <div class="tracked-counts">
                     <span>🔴 LOW: <span id="trackedLow" style="color:#ef4444;">0</span></span>
                     <span>🟡 MEDIUM: <span id="trackedMedium" style="color:#fbbf24;">0</span></span>
                     <span>🟢 HIGH: <span id="trackedHigh" style="color:#10b981;">0</span></span>
-                    <span>📊 Total: <span id="trackedTotal" style="color:#a78bfa;">0</span></span>
-                </div>
-                <div style="text-align:center; margin-top:10px; font-size:12px;">
-                    🎯 Most Common: <strong id="mostCommonGroup" style="color:#fbbf24;">--</strong> (<span id="mostCommonCount">0</span> বার)
                 </div>
             </div>
 
             <div class="fallback-stats">
-                <div class="fallback-score low"><div>🔴 LOW</div><div class="score-num" id="scoreLow">40</div><div style="font-size:10px;">/100</div></div>
-                <div class="fallback-score medium"><div>🟡 MEDIUM</div><div class="score-num" id="scoreMedium">40</div><div style="font-size:10px;">/100</div></div>
-                <div class="fallback-score high"><div>🟢 HIGH</div><div class="score-num" id="scoreHigh">40</div><div style="font-size:10px;">/100</div></div>
+                <div class="fallback-score low"><div>🔴 LOW স্কোর</div><div class="score-num" id="scoreLow">40</div><div style="font-size:10px;">/100</div></div>
+                <div class="fallback-score medium"><div>🟡 MEDIUM স্কোর</div><div class="score-num" id="scoreMedium">40</div><div style="font-size:10px;">/100</div></div>
+                <div class="fallback-score high"><div>🟢 HIGH স্কোর</div><div class="score-num" id="scoreHigh">40</div><div style="font-size:10px;">/100</div></div>
             </div>
 
             <div class="prediction-display">
-                <div style="font-size:13px; opacity:0.9;">🎲 FALLBACK SYSTEM PREDICTION</div>
+                <div style="font-size:13px; opacity:0.9;">🎲 FALLBACK সিস্টেমের প্রেডিকশন</div>
                 <div class="prediction-group" id="fallbackPrediction">--</div>
                 <div id="fallbackReason" style="font-size:12px; margin-top:8px; opacity:0.8;"></div>
             </div>
@@ -495,26 +455,26 @@
 
     <!-- ENSEMBLE VOTER -->
     <div class="card ensemble-card" style="margin-bottom: 25px;">
-        <div class="card-header">🏆 ENSEMBLE VOTER (Four AI Combined)</div>
+        <div class="card-header">🏆 ENSEMBLE VOTER (৪টি AI এর সম্মিলিত ভোট)</div>
         <div class="card-body">
             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
-                <div><strong>🎯 Ensemble Prediction:</strong> <span id="ensemblePred" style="font-size:28px; font-weight:800; color:#fbbf24;">--</span></div>
-                <div><strong>📊 Confidence:</strong> <span id="ensembleConf" style="color:#10b981; font-weight:700;">--%</span></div>
-                <div><strong>🤝 Agreement:</strong> <span id="ensembleAgreement" style="color:#a78bfa;">--/4</span></div>
-                <div><strong>⚖️ Weights:</strong> <span id="ensembleWeights" style="font-family:monospace;">--</span></div>
+                <div><strong>🎯 Ensemble প্রেডিকশন:</strong> <span id="ensemblePred" style="font-size:28px; font-weight:800; color:#fbbf24;">--</span></div>
+                <div><strong>📊 কনফিডেন্স:</strong> <span id="ensembleConf" style="color:#10b981; font-weight:700;">--%</span></div>
+                <div><strong>🤝 একমত:</strong> <span id="ensembleAgreement" style="color:#a78bfa;">--/4</span></div>
+                <div><strong>⚖️ ওয়েট:</strong> <span id="ensembleWeights" style="font-family:monospace;">--</span></div>
             </div>
             <div style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 10px; font-size:13px;" id="ensembleScores">LOW:0 | MEDIUM:0 | HIGH:0</div>
         </div>
     </div>
 
-    <!-- Console Log -->
+    <!-- Console -->
     <div class="console-log">
         <div class="console-header">
-            <span>📋 Debug Console (Real-time Updates)</span>
+            <span>📋 ডিবাগ কনসোল (রিয়েল-টাইম আপডেট)</span>
             <button class="clear-console" id="clearConsoleBtn2">Clear</button>
         </div>
         <div class="console-content" id="consoleContent">
-            <div class="console-line">🔍 Dashboard loaded. WebSocket connecting...</div>
+            <div class="console-line info">🔍 ড্যাশবোর্ড লোড হয়েছে। WebSocket সংযোগ হচ্ছে...</div>
         </div>
     </div>
 </div>
@@ -539,7 +499,7 @@
         if (!tbody) return;
         
         if (!aiState || !aiState.patterns || !aiState.patterns[patternKey]) {
-            tbody.innerHTML = '<tr><td colspan="6">📭 No pattern data yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6">📭 কোনো ডাটা নেই এখনো</td></tr>';
             return;
         }
         
@@ -563,7 +523,7 @@
                     <td><strong style="color:#fbbf24;">${Math.max(lowPct, medPct, highPct)}%</strong></td>
                 </tr>`;
             } else {
-                html += `<tr><td>${len}</td><td colspan="5" style="opacity:0.4;">— No data —</td></tr>`;
+                html += `<tr><td>${len}</td><td colspan="5" style="opacity:0.4;">— ডাটা নেই —</td></tr>`;
             }
         }
         tbody.innerHTML = html;
@@ -578,35 +538,35 @@
                 const p = data.prediction;
                 document.getElementById('lastUpdateTime').textContent = new Date().toLocaleTimeString();
                 
-                // ===== AI-A Update =====
+                // AI-A Update
                 document.getElementById('aiAInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
                 document.getElementById('aiAPred').innerHTML = `${p.stick || 'MEDIUM'}`;
                 document.getElementById('aiAConf').innerHTML = `${p.stickConfidence || 0}%`;
                 document.getElementById('aiAAcc').innerHTML = `${p.aiState?.stick?.accuracy?.toFixed(1) || 0}%`;
-                document.getElementById('aiAMode').innerHTML = p.stickPredictionType === 'FALLBACK' ? '🔸 Fallback Mode' : (p.stickPredictionType === 'STICK' ? '🎯 Pattern Mode' : '📖 Learning');
+                document.getElementById('aiAMode').innerHTML = p.stickPredictionType === 'FALLBACK' ? '🔸 ফলব্যাক মোড' : (p.stickPredictionType === 'STICK' ? '🎯 প্যাটার্ন মোড' : '📖 লার্নিং');
                 
-                // ===== AI-B Update =====
+                // AI-B Update
                 document.getElementById('aiBInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
                 document.getElementById('aiBPred').innerHTML = `${p.extreme || 'MEDIUM'}`;
                 document.getElementById('aiBConf').innerHTML = `${p.extremeConfidence || 0}%`;
-                document.getElementById('aiBPattern').innerHTML = p.extremePattern || (p.extreme !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
-                document.getElementById('aiBMode').innerHTML = p.extremePredictionType === 'FALLBACK' ? '🔸 Fallback Mode' : (p.extremePredictionType === 'CONTINUE' ? '🔄 Pattern Mode' : '📖 Learning');
+                document.getElementById('aiBAcc').innerHTML = `${p.aiState?.extreme?.accuracy?.toFixed(1) || 0}%`;
+                document.getElementById('aiBMode').innerHTML = p.extremePredictionType === 'FALLBACK' ? '🔸 ফলব্যাক মোড' : (p.extremePredictionType === 'CONTINUE' ? '🔄 প্যাটার্ন মোড' : '📖 লার্নিং');
                 
-                // ===== AI-C Update =====
+                // AI-C Update
                 document.getElementById('aiCInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
                 document.getElementById('aiCPred').innerHTML = `${p.lowMid || 'MEDIUM'}`;
                 document.getElementById('aiCConf').innerHTML = `${p.lowMidConfidence || 0}%`;
-                document.getElementById('aiCPattern').innerHTML = p.lowMidPattern || (p.lowMid !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
-                document.getElementById('aiCMode').innerHTML = p.lowMidPredictionType === 'FALLBACK' ? '🔸 Fallback Mode' : (p.lowMidPredictionType === 'CONTINUE' ? '🔄 Pattern Mode' : '📖 Learning');
+                document.getElementById('aiCAcc').innerHTML = `${p.aiState?.lowMid?.accuracy?.toFixed(1) || 0}%`;
+                document.getElementById('aiCMode').innerHTML = p.lowMidPredictionType === 'FALLBACK' ? '🔸 ফলব্যাক মোড' : (p.lowMidPredictionType === 'CONTINUE' ? '🔄 প্যাটার্ন মোড' : '📖 লার্নিং');
                 
-                // ===== AI-D Update =====
+                // AI-D Update
                 document.getElementById('aiDInput').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
                 document.getElementById('aiDPred').innerHTML = `${p.midHigh || 'MEDIUM'}`;
                 document.getElementById('aiDConf').innerHTML = `${p.midHighConfidence || 0}%`;
-                document.getElementById('aiDPattern').innerHTML = p.midHighPattern || (p.midHigh !== 'MEDIUM' ? `${p.previousGroup}→${p.currentGroup}` : 'No pattern');
-                document.getElementById('aiDMode').innerHTML = p.midHighPredictionType === 'FALLBACK' ? '🔸 Fallback Mode' : (p.midHighPredictionType === 'CONTINUE' ? '🔄 Pattern Mode' : '📖 Learning');
+                document.getElementById('aiDAcc').innerHTML = `${p.aiState?.midHigh?.accuracy?.toFixed(1) || 0}%`;
+                document.getElementById('aiDMode').innerHTML = p.midHighPredictionType === 'FALLBACK' ? '🔸 ফলব্যাক মোড' : (p.midHighPredictionType === 'CONTINUE' ? '🔄 প্যাটার্ন মোড' : '📖 লার্নিং');
                 
-                // ===== Update Pattern Tables =====
+                // Pattern Tables
                 if(p.aiState) {
                     updatePatternTable('aiAStickTable', p.aiState.stick, 'LOW→LOW');
                     updatePatternTable('aiBTable', p.aiState.extreme, 'HIGH→LOW');
@@ -614,30 +574,19 @@
                     updatePatternTable('aiDTable', p.aiState.midHigh, 'MEDIUM→HIGH');
                 }
                 
-                // ===== Fallback System Update =====
+                // Fallback System
                 const isFallbackActive = p.extremePredictionType === 'FALLBACK' || p.lowMidPredictionType === 'FALLBACK' || p.midHighPredictionType === 'FALLBACK';
-                document.getElementById('fallbackModeStatus').innerHTML = isFallbackActive ? '🟣 ACTIVE - Pattern not matched' : '🟢 INACTIVE - Pattern matched';
-                document.getElementById('fallbackModeStatus').style.color = isFallbackActive ? '#a78bfa' : '#10b981';
+                document.getElementById('fallbackModeStatus').innerHTML = isFallbackActive ? '🟣 ACTIVE - প্যাটার্ন মেলেনি' : '🟢 INACTIVE - প্যাটার্ন ম্যাচ করেছে';
                 document.getElementById('fallbackLastPattern').innerHTML = `${p.previousGroup || '--'} → ${p.currentGroup || '--'}`;
                 
-                // Tracked Groups
-                if(p.aiState?.extreme?.fallbackTracking?.trackedGroups) {
-                    const tg = p.aiState.extreme.fallbackTracking.trackedGroups;
-                    document.getElementById('trackedLow').innerHTML = tg.LOW || 0;
-                    document.getElementById('trackedMedium').innerHTML = tg.MEDIUM || 0;
-                    document.getElementById('trackedHigh').innerHTML = tg.HIGH || 0;
-                    const total = (tg.LOW||0) + (tg.MEDIUM||0) + (tg.HIGH||0);
-                    document.getElementById('trackedTotal').innerHTML = total;
-                    
-                    let maxGroup = 'MEDIUM', maxCount = 0;
-                    if((tg.LOW||0) > maxCount) { maxCount = tg.LOW; maxGroup = 'LOW'; }
-                    if((tg.MEDIUM||0) > maxCount) { maxCount = tg.MEDIUM; maxGroup = 'MEDIUM'; }
-                    if((tg.HIGH||0) > maxCount) { maxCount = tg.HIGH; maxGroup = 'HIGH'; }
-                    document.getElementById('mostCommonGroup').innerHTML = maxGroup;
-                    document.getElementById('mostCommonCount').innerHTML = maxCount;
+                if(p.aiState?.extreme?.fallbackTracking) {
+                    const ft = p.aiState.extreme.fallbackTracking;
+                    document.getElementById('trackedLow').innerHTML = ft.trackedGroups?.LOW || 0;
+                    document.getElementById('trackedMedium').innerHTML = ft.trackedGroups?.MEDIUM || 0;
+                    document.getElementById('trackedHigh').innerHTML = ft.trackedGroups?.HIGH || 0;
+                    document.getElementById('trackedCountDisplay').innerHTML = `${ft.totalTracked || 0}/${ft.maxTrackLimit || 15}`;
                 }
                 
-                // Scores
                 if(p.aiState?.extreme?.fallbackScores) {
                     const fs = p.aiState.extreme.fallbackScores;
                     document.getElementById('scoreLow').innerHTML = fs.LOW || 40;
@@ -645,19 +594,24 @@
                     document.getElementById('scoreHigh').innerHTML = fs.HIGH || 40;
                 }
                 
-                // Fallback Prediction
-                const fallbackPred = p.ensemble || 'MEDIUM';
+                let fallbackPred = p.ensemble || 'MEDIUM';
                 document.getElementById('fallbackPrediction').innerHTML = fallbackPred;
-                let reason = '';
+                let reasonText = '';
                 if(p.aiState?.extreme?.fallbackTracking?.trackedGroups && 
                    Object.values(p.aiState.extreme.fallbackTracking.trackedGroups).reduce((a,b)=>a+b,0) > 0) {
-                    reason = `📊 Data: Most common = ${document.getElementById('mostCommonGroup').innerHTML} (${document.getElementById('mostCommonCount').innerHTML} times) → Score adjusted prediction`;
+                    let mostCommon = 'MEDIUM';
+                    let maxCount = 0;
+                    const tg = p.aiState.extreme.fallbackTracking.trackedGroups;
+                    if((tg.LOW||0) > maxCount) { maxCount = tg.LOW; mostCommon = 'LOW'; }
+                    if((tg.MEDIUM||0) > maxCount) { maxCount = tg.MEDIUM; mostCommon = 'MEDIUM'; }
+                    if((tg.HIGH||0) > maxCount) { maxCount = tg.HIGH; mostCommon = 'HIGH'; }
+                    reasonText = `📊 সবচেয়ে বেশি এসেছে ${mostCommon} (${maxCount} বার) + স্কোর অ্যাডজাস্ট করে প্রেডিকশন`;
                 } else {
-                    reason = `⚠️ No tracked data yet, using Score System: ${fallbackPred} has highest score`;
+                    reasonText = `⚠️ ট্র্যাকড ডাটা নেই, স্কোর সিস্টেম ব্যবহার করে প্রেডিকশন`;
                 }
-                document.getElementById('fallbackReason').innerHTML = reason;
+                document.getElementById('fallbackReason').innerHTML = reasonText;
                 
-                // ===== Ensemble Update =====
+                // Ensemble Update
                 document.getElementById('ensemblePred').innerHTML = p.ensemble || 'MEDIUM';
                 document.getElementById('ensembleConf').innerHTML = `${p.ensembleConfidence || 0}%`;
                 document.getElementById('ensembleAgreement').innerHTML = `${p.agreement || 0}/4`;
@@ -669,8 +623,6 @@
                     const lw = Math.round((p.weights.lowMid || 0) * 100);
                     const mw = Math.round((p.weights.midHigh || 0) * 100);
                     weightsHtml = `A:${sw}% B:${ew}% C:${lw}% D:${mw}%`;
-                } else {
-                    weightsHtml = 'A:25% B:25% C:25% D:25%';
                 }
                 document.getElementById('ensembleWeights').innerHTML = weightsHtml;
                 
@@ -678,7 +630,7 @@
                     document.getElementById('ensembleScores').innerHTML = `🔴 LOW: ${Math.round(p.scores.LOW || 0)} | 🟡 MEDIUM: ${Math.round(p.scores.MEDIUM || 0)} | 🟢 HIGH: ${Math.round(p.scores.HIGH || 0)}`;
                 }
                 
-                // ===== Stats Update =====
+                // Stats
                 const statsRes = await fetch(`${API_BASE}/stats`);
                 const stats = await statsRes.json();
                 document.getElementById('totalResults').innerHTML = stats.totalRounds || 0;
@@ -696,22 +648,22 @@
                 return p;
             }
         } catch(e) {
-            addLog(`Error: ${e.message}`, 'error');
+            addLog(`এরর: ${e.message}`, 'error');
         }
         return null;
     }
 
     async function runAllTests() {
-        addLog('🚀 Starting full system diagnostic...', 'info');
+        addLog('🚀 সম্পূর্ণ সিস্টেম ডায়াগনস্টিক শুরু...', 'info');
         addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         await fetchAndUpdate();
         addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        addLog('✅ Diagnostic complete! All systems operational.', 'success');
+        addLog('✅ ডায়াগনস্টিক সম্পূর্ণ! সব সিস্টেম সচল আছে।', 'success');
     }
 
-    function testPrediction() { addLog('🎯 Testing live prediction...', 'info'); fetchAndUpdate(); }
-    function forceRefresh() { addLog('🔄 Force refreshing all data...', 'info'); fetchAndUpdate(); addLog('✅ Data refreshed', 'success'); }
-    function clearConsole() { document.getElementById('consoleContent').innerHTML = '<div class="console-line">Console cleared. Real-time updates active...</div>'; }
+    function testPrediction() { addLog('🎯 লাইভ প্রেডিকশন টেস্ট করা হচ্ছে...', 'info'); fetchAndUpdate(); }
+    function forceRefresh() { addLog('🔄 সব ডাটা রিফ্রেশ করা হচ্ছে...', 'info'); fetchAndUpdate(); addLog('✅ ডাটা রিফ্রেশ সম্পূর্ণ', 'success'); }
+    function clearConsole() { document.getElementById('consoleContent').innerHTML = '<div class="console-line info">কনসোল ক্লিয়ার করা হয়েছে। রিয়েল-টাইম আপডেট সক্রিয়...</div>'; }
 
     function setupWebSocket() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -720,17 +672,15 @@
         ws.onopen = () => {
             document.getElementById('wsStatusDot').className = 'ws-status ws-connected';
             document.getElementById('wsStatusText').innerHTML = 'Connected';
-            addLog('🔌 WebSocket connected - Real-time updates active', 'success');
+            addLog('🔌 WebSocket সংযুক্ত - রিয়েল-টাইম আপডেট সক্রিয়', 'success');
         };
         
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
                 if(data.type === 'new_result') {
-                    addLog('🔄 Real-time update: New result detected', 'info');
+                    addLog('🔄 রিয়েল-টাইম আপডেট: নতুন রেজাল্ট পেয়েছি', 'info');
                     fetchAndUpdate();
-                    document.getElementById('lastUpdateTime').style.color = '#10b981';
-                    setTimeout(() => { document.getElementById('lastUpdateTime').style.color = '#fbbf24'; }, 500);
                 }
             } catch(e) {}
         };
@@ -738,20 +688,20 @@
         ws.onerror = () => {
             document.getElementById('wsStatusDot').className = 'ws-status ws-disconnected';
             document.getElementById('wsStatusText').innerHTML = 'Error';
-            addLog('⚠️ WebSocket error occurred', 'warning');
+            addLog('⚠️ WebSocket এরর হয়েছে', 'warning');
         };
         
         ws.onclose = () => {
             document.getElementById('wsStatusDot').className = 'ws-status ws-disconnected';
             document.getElementById('wsStatusText').innerHTML = 'Disconnected';
-            addLog('🔌 WebSocket disconnected - Reconnecting...', 'warning');
+            addLog('🔌 WebSocket সংযোগ বিচ্ছিন্ন - পুনরায় সংযোগ হচ্ছে...', 'warning');
             setTimeout(setupWebSocket, 3000);
         };
     }
 
     // Event Listeners
     document.getElementById('testAllBtn').onclick = runAllTests;
-    document.getElementById('fetchStatusBtn').onclick = () => { fetchAndUpdate(); addLog('📡 Status fetched', 'info'); };
+    document.getElementById('fetchStatusBtn').onclick = () => { fetchAndUpdate(); addLog('📡 স্ট্যাটাস নেওয়া হয়েছে', 'info'); };
     document.getElementById('testPredictionBtn').onclick = testPrediction;
     document.getElementById('forceRefreshBtn').onclick = forceRefresh;
     document.getElementById('clearConsoleBtn').onclick = clearConsole;
