@@ -1,7 +1,7 @@
 {
   "name": "lightning-dice-predictor",
-  "version": "5.0.0",
-  "description": "Lightning Dice Prediction Tool - Four AI Pattern System with Persistent Storage",
+  "version": "7.0.0",
+  "description": "Lightning Dice Prediction Tool - 3-Step Pattern AI System with CONTINUE/SWITCH Protection",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,8 +11,9 @@
     "lightning-dice",
     "prediction",
     "pattern-recognition",
+    "3-step-pattern",
     "ai",
-    "four-ai"
+    "continue-switch"
   ],
   "author": "",
   "license": "MIT",
