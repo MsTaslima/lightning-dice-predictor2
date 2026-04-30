@@ -1,7 +1,8 @@
 // ============================================================
-// MODIFIED server.js (v8.0 - 3-Step Pattern AI with Full Telegram Notifications)
+// MODIFIED server.js (v8.0 - 3-Step Pattern AI with Telegram)
 // Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic
-// Telegram: EVERY prediction result (correct/wrong) + consecutive miss alerts
+// Telegram: ONLY sends notifications for CORRECT and WRONG predictions
+// No notifications for WAIT mode or pattern detection
 // ============================================================
 
 // Fix memory leak warnings
@@ -28,12 +29,11 @@ const PORT = process.env.PORT || 3000;
 // ============ TELEGRAM NOTIFICATION STATE ============
 let aiMissCount = 0;
 let alertTriggered = false;
-let lastNotificationTime = null;
 
-// ============ TELEGRAM FUNCTIONS (UPDATED) ============
+// ============ SIMPLIFIED TELEGRAM FUNCTIONS ============
+// Only sends notifications for CORRECT and WRONG predictions
 
-// Send notification for WRONG prediction
-async function sendTelegramWrongNotification(missCount, actualGroup, predictedGroup, nextPrediction, retryCount = 0) {
+async function sendTelegramWrongNotification(actualGroup, predictedGroup, retryCount = 0) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
     
@@ -42,134 +42,49 @@ async function sendTelegramWrongNotification(missCount, actualGroup, predictedGr
         return;
     }
     
-    const retryText = retryCount > 0 ? `\n🔄 Retry attempt: #${retryCount}` : '';
-    const urgentText = missCount >= 4 ? '\n⚠️ CRITICAL: 4+ consecutive wrong predictions!' : '';
+    const retryText = retryCount > 0 ? ` (Retry #${retryCount})` : '';
     
-    const message = `❌ LIGHTNING DICE - WRONG PREDICTION ❌
+    const message = `❌ WRONG PREDICTION ❌
 
-📊 Prediction Result:
-• Predicted: ${predictedGroup}
-• Actual: ${actualGroup}
-• Consecutive Wrong: ${missCount}${retryText}
-
-🔮 NEXT ROUND PREDICTION:
-🎲 ${nextPrediction}
-${urgentText}
-📎 Live: https://web-production-ebac2.up.railway.app`;
+Predicted: ${predictedGroup}
+Actual: ${actualGroup}${retryText}`;
 
     try {
         const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
         await axios.post(url, {
             chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
+            text: message
         });
-        console.log(`📱 Telegram WRONG notification sent (miss #${missCount})`);
-        lastNotificationTime = new Date();
+        console.log(`📱 Telegram: WRONG notification sent`);
     } catch (error) {
-        console.error('❌ Failed to send Telegram notification:', error.message);
+        console.error('❌ Telegram error:', error.message);
     }
 }
 
-// Send notification for CORRECT prediction
 async function sendTelegramCorrectNotification(actualGroup, predictedGroup, wasRetry = false, retryCount = 0) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
     
     if (!botToken || !chatId) {
-        console.log('⚠️ Telegram token or chat ID not set. Skipping notification.');
         return;
     }
     
-    const retryText = wasRetry ? `\n✅ Correct after ${retryCount} retry attempts!` : '\n✅ Correct on first attempt!';
+    const retryText = wasRetry ? ` (Correct after ${retryCount} retries)` : '';
     
-    const message = `✅ LIGHTNING DICE - CORRECT PREDICTION ✅
+    const message = `✅ CORRECT PREDICTION ✅
 
-📊 Prediction Result:
-• Predicted: ${predictedGroup}
-• Actual: ${actualGroup}${retryText}
-
-🎯 AI Accuracy: Updating...
-
-📎 Live: https://web-production-ebac2.up.railway.app`;
+Predicted: ${predictedGroup}
+Actual: ${actualGroup}${retryText}`;
 
     try {
         const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
         await axios.post(url, {
             chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
+            text: message
         });
-        console.log(`📱 Telegram CORRECT notification sent`);
-        lastNotificationTime = new Date();
+        console.log(`📱 Telegram: CORRECT notification sent`);
     } catch (error) {
-        console.error('❌ Failed to send Telegram notification:', error.message);
-    }
-}
-
-// Send notification for pattern detection (new pattern found)
-async function sendTelegramPatternDetectedNotification(pattern, protectionType, predictedGroup, recentData, previousData) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    
-    if (!botToken || !chatId) {
-        return;
-    }
-    
-    const message = `🎯 LIGHTNING DICE - NEW PATTERN DETECTED 🎯
-
-📐 Pattern: ${pattern}
-🛡️ Protection: ${protectionType}
-📊 Recent Data: ${recentData}
-📊 Previous Data: ${previousData}
-
-🔮 AI Prediction for next round:
-🎲 ${predictedGroup}
-
-📎 Live: https://web-production-ebac2.up.railway.app`;
-
-    try {
-        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-        await axios.post(url, {
-            chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
-        });
-        console.log(`📱 Telegram PATTERN DETECTED notification sent: ${pattern}`);
-    } catch (error) {
-        console.error('❌ Failed to send pattern notification:', error.message);
-    }
-}
-
-// Send notification for AI reset (after correct prediction)
-async function sendTelegramResetNotification(totalWrongCount) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    
-    if (!botToken || !chatId) {
-        return;
-    }
-    
-    const message = `🔄 LIGHTNING DICE - AI RESET 🔄
-
-✅ Pattern completed successfully!
-📊 Total wrong attempts in this pattern: ${totalWrongCount}
-
-🤖 AI is now back to WAIT mode.
-🔍 Searching for new pattern...
-
-📎 Live: https://web-production-ebac2.up.railway.app`;
-
-    try {
-        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-        await axios.post(url, {
-            chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
-        });
-        console.log(`📱 Telegram RESET notification sent`);
-    } catch (error) {
-        console.error('❌ Failed to send reset notification:', error.message);
+        console.error('❌ Telegram error:', error.message);
     }
 }
 
@@ -282,7 +197,7 @@ async function initNewAI() {
     }
     
     console.log(`✅ New AI ready - 3-Step Pattern AI active with ${serverAI.patterns.length} patterns`);
-    console.log(`📱 Telegram notifications: EVERY prediction (correct/wrong) + pattern detection + reset`);
+    console.log(`📱 Telegram: ONLY sends notifications for CORRECT and WRONG predictions`);
 }
 
 // Save AI state to database periodically
@@ -317,7 +232,7 @@ app.use(express.static('public'));
 
 // ============ WEB SOCKET SERVER ============
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor v8.0 - 3-Step Pattern AI with Full Telegram`);
+    console.log(`\n⚡ Lightning Dice Predictor v8.0 - 3-Step Pattern AI`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`🚀 Server running on port ${PORT}\n`);
     initNewAI();
@@ -500,17 +415,6 @@ async function getCurrentPredictionData() {
     if (serverAI) {
         const prediction = serverAI.predict(last3Results, "CONTINUE");
         
-        // Send Telegram notification when NEW pattern is detected (not a retry)
-        if (prediction.status === "PREDICTION_READY" && !prediction.isRetry && prediction.isActive) {
-            await sendTelegramPatternDetectedNotification(
-                prediction.pattern,
-                prediction.protectionType,
-                prediction.predictedGroup,
-                prediction.recentData || last3Results[2],
-                prediction.previousData || last3Results[1]
-            );
-        }
-        
         return {
             pattern3step: prediction.pattern,
             protectionType: prediction.protectionType,
@@ -656,44 +560,18 @@ async function updatePredictionWithResult(resultId, actualGroup) {
         console.log(`   AI Accuracy updated: ${serverAI.getAccuracy().toFixed(1)}%`);
     }
     
-    // ============ UPDATED TELEGRAM NOTIFICATION LOGIC ============
-    const nextRoundPrediction = await getCurrentPredictionData();
-    const nextPredictionText = nextRoundPrediction.predictedGroup || 'WAITING';
+    // ============ SIMPLIFIED TELEGRAM NOTIFICATION LOGIC ============
+    // ONLY sends for CORRECT and WRONG predictions. NO notifications for WAIT mode.
     
     if (isCorrect === 1) {
         // CORRECT prediction - send notification
         await sendTelegramCorrectNotification(actualGroup, prediction.predicted_group, isRetry, retryCount);
-        
-        if (alertTriggered) {
-            console.log('🔔 AI is correct again. Telegram alerts will stop.');
-        }
-        
-        // Send reset notification if pattern was active and now reset
-        if (updateResult && updateResult.resetPattern) {
-            await sendTelegramResetNotification(aiMissCount);
-        }
-        
         aiMissCount = 0;
         alertTriggered = false;
-        
     } else {
-        // WRONG prediction - increment counter and send notification
+        // WRONG prediction - send notification
         aiMissCount++;
-        console.log(`📉 AI miss #${aiMissCount}`);
-        
-        // Send notification for EVERY wrong prediction
-        await sendTelegramWrongNotification(
-            aiMissCount,
-            actualGroup,
-            prediction.predicted_group,
-            nextPredictionText,
-            retryCount
-        );
-        
-        // Additional alert for 4+ consecutive misses
-        if (aiMissCount >= 4 && !alertTriggered) {
-            alertTriggered = true;
-        }
+        await sendTelegramWrongNotification(actualGroup, prediction.predicted_group, retryCount);
     }
     // ============ END TELEGRAM LOGIC ============
     
@@ -1116,8 +994,8 @@ collectData();
 console.log('📊 Background data collection started (every 3 seconds)');
 console.log('🤖 3-Step Pattern AI v8.0 active - 6 patterns loaded');
 console.log('🔌 WebSocket server ready for real-time updates');
-console.log('📱 Telegram notifications: EVERY prediction (correct/wrong) + pattern detection + reset');
-console.log('📈 v8.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic | Full Telegram Alerts');
+console.log('📱 Telegram: ONLY sends notifications for CORRECT and WRONG predictions');
+console.log('📈 v8.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic');
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
