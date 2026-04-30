@@ -1,8 +1,7 @@
 // ============================================================
-// MODIFIED server.js (READY FOR v7.0 - New 3-Step Pattern AI)
-// Removed: 4 Old AI Models (Stick, Extreme, LowMid, MidHigh, Ensemble)
-// Added: Placeholder for New 3-Step Pattern AI
-// Features: Data Collection, Database, WebSocket, Telegram (kept)
+// MODIFIED server.js (v7.0 - New 3-Step Pattern AI)
+// Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | WAIT Mode
+// Data Collection, Database, WebSocket, Telegram (kept)
 // ============================================================
 
 // Fix memory leak warnings
@@ -20,9 +19,8 @@ const sqlite3 = require('sqlite3').verbose();
 const WebSocket = require('ws');
 const fs = require('fs');
 
-// ============ NEW AI IMPORT (TO BE IMPLEMENTED) ============
-// TODO: After creating new-ai-logic.js, uncomment the line below
-// const { NewPatternAI } = require('./new-ai-logic');
+// ============ NEW AI IMPORT ============
+const { NewPatternAI } = require('./new-ai-logic');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,15 +31,15 @@ let alertTriggered = false;
 
 // ============ TELEGRAM FUNCTION ============
 async function sendTelegramNotification(missCount, actualGroup, predictedGroup, nextPrediction) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    
-    if (!botToken || !chatId) {
-        console.log('⚠️ Telegram token or chat ID not set. Skipping notification.');
-        return;
-    }
-    
-    const message = `⚡ LIGHTNING DICE ALERT ⚡
+   const botToken = process.env.TELEGRAM_BOT_TOKEN;
+   const chatId = process.env.TELEGRAM_CHAT_ID;
+   
+   if (!botToken || !chatId) {
+       console.log('⚠️ Telegram token or chat ID not set. Skipping notification.');
+       return;
+   }
+   
+   const message = `⚡ LIGHTNING DICE ALERT ⚡
 
 🎯 AI has been WRONG for ${missCount} consecutive rounds!
 
@@ -54,24 +52,24 @@ async function sendTelegramNotification(missCount, actualGroup, predictedGroup, 
 
 📎 Live: https://web-production-ebac2.up.railway.app`;
 
-    try {
-        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-        await axios.post(url, {
-            chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
-        });
-        console.log(`✅ Telegram notification sent (${missCount} consecutive misses)`);
-    } catch (error) {
-        console.error('❌ Failed to send Telegram notification:', error.message);
-    }
+   try {
+       const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+       await axios.post(url, {
+           chat_id: chatId,
+           text: message,
+           parse_mode: 'HTML'
+       });
+       console.log(`✅ Telegram notification sent (${missCount} consecutive misses)`);
+   } catch (error) {
+       console.error('❌ Failed to send Telegram notification:', error.message);
+   }
 }
 
 // Ensure database directory exists
 const dbDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-    console.log('📁 Created data directory:', dbDir);
+   fs.mkdirSync(dbDir, { recursive: true });
+   console.log('📁 Created data directory:', dbDir);
 }
 
 // Database setup
@@ -81,88 +79,131 @@ const db = new sqlite3.Database(dbPath);
 
 // Create tables (UPDATED for v7.0)
 db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS results (
-        id TEXT PRIMARY KEY,
-        total INTEGER,
-        group_name TEXT,
-        multiplier INTEGER,
-        dice_values TEXT,
-        timestamp DATETIME,
-        winners INTEGER,
-        payout INTEGER
-    )`);
-    
-    // NEW predictions table for 3-Step Pattern AI
-    db.run(`CREATE TABLE IF NOT EXISTS predictions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        result_id TEXT UNIQUE,
-        pattern_3step TEXT,
-        protection_type TEXT,
-        predicted_group TEXT,
-        prediction_timestamp DATETIME,
-        actual_group TEXT,
-        actual_timestamp DATETIME,
-        is_correct INTEGER DEFAULT -1
-    )`);
-    
-    // NEW AI stats table (simplified)
-    db.run(`CREATE TABLE IF NOT EXISTS ai_stats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        total_predictions INTEGER DEFAULT 0,
-        correct_predictions INTEGER DEFAULT 0,
-        accuracy REAL DEFAULT 0,
-        last_updated DATETIME
-    )`);
-    
-    // NEW pattern history table for 3-step patterns
-    db.run(`CREATE TABLE IF NOT EXISTS pattern_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        pattern_3step TEXT NOT NULL,
-        protection_type TEXT NOT NULL,
-        predicted_group TEXT NOT NULL,
-        occurrence_count INTEGER DEFAULT 1,
-        last_seen DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-    
-    // NEW AI state storage
-    db.run(`CREATE TABLE IF NOT EXISTS ai_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        state_data TEXT,
-        updated_at DATETIME
-    )`);
-    
-    console.log('✅ Database tables created/verified (v7.0 ready)');
+   db.run(`CREATE TABLE IF NOT EXISTS results (
+       id TEXT PRIMARY KEY,
+       total INTEGER,
+       group_name TEXT,
+       multiplier INTEGER,
+       dice_values TEXT,
+       timestamp DATETIME,
+       winners INTEGER,
+       payout INTEGER
+   )`);
+   
+   // NEW predictions table for 3-Step Pattern AI
+   db.run(`CREATE TABLE IF NOT EXISTS predictions (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       result_id TEXT UNIQUE,
+       pattern_3step TEXT,
+       protection_type TEXT,
+       predicted_group TEXT,
+       prediction_timestamp DATETIME,
+       actual_group TEXT,
+       actual_timestamp DATETIME,
+       is_correct INTEGER DEFAULT -1
+   )`);
+   
+   // NEW AI stats table (simplified)
+   db.run(`CREATE TABLE IF NOT EXISTS ai_stats (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       total_predictions INTEGER DEFAULT 0,
+       correct_predictions INTEGER DEFAULT 0,
+       accuracy REAL DEFAULT 0,
+       last_updated DATETIME
+   )`);
+   
+   // NEW pattern history table for 3-step patterns
+   db.run(`CREATE TABLE IF NOT EXISTS pattern_history (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       pattern_3step TEXT NOT NULL,
+       protection_type TEXT NOT NULL,
+       predicted_group TEXT NOT NULL,
+       occurrence_count INTEGER DEFAULT 1,
+       last_seen DATETIME,
+       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   )`);
+   
+   // NEW AI state storage
+   db.run(`CREATE TABLE IF NOT EXISTS ai_state (
+       id INTEGER PRIMARY KEY CHECK (id = 1),
+       state_data TEXT,
+       updated_at DATETIME
+   )`);
+   
+   console.log('✅ Database tables created/verified (v7.0 ready)');
 });
 
 // ============ NEW AI MODEL INITIALIZATION ============
-// TODO: Initialize your new AI model here
 let serverAI = null;
 
 async function initNewAI() {
-    console.log('🤖 Initializing New 3-Step Pattern AI...');
-    // TODO: After creating new-ai-logic.js, uncomment below
-    // serverAI = new NewPatternAI();
-    // await serverAI.loadState(db);
-    console.log('✅ New AI ready (waiting for new-ai-logic.js)');
+   console.log('🤖 Initializing New 3-Step Pattern AI...');
+   serverAI = new NewPatternAI();
+   
+   // Try to load saved state from database
+   try {
+       const savedState = await new Promise((resolve) => {
+           db.get(`SELECT state_data FROM ai_state WHERE id = 1`, (err, row) => {
+               if (err || !row) {
+                   resolve(null);
+               } else {
+                   try {
+                       resolve(JSON.parse(row.state_data));
+                   } catch (e) {
+                       resolve(null);
+                   }
+               }
+           });
+       });
+       
+       if (savedState) {
+           serverAI.loadState(savedState);
+           console.log(`📀 Loaded AI state from database`);
+       }
+   } catch (err) {
+       console.log('No existing AI state found, starting fresh');
+   }
+   
+   console.log(`✅ New AI ready - 3-Step Pattern AI active with ${serverAI.patterns.length} patterns`);
 }
+
+// Save AI state to database periodically
+async function saveAIState() {
+   if (!serverAI) return;
+   
+   try {
+       const state = serverAI.exportState();
+       db.run(`INSERT OR REPLACE INTO ai_state (id, state_data, updated_at) VALUES (1, ?, ?)`,
+           [JSON.stringify(state), new Date().toISOString()],
+           (err) => {
+               if (err) console.error('Error saving AI state:', err);
+               else console.log('💾 AI state saved to database');
+           }
+       );
+   } catch (err) {
+       console.error('Error exporting AI state:', err);
+   }
+}
+
+// Save AI state every 5 minutes
+setInterval(saveAIState, 5 * 60 * 1000);
 
 // ============ CORS & MIDDLEWARE ============
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+   origin: '*',
+   methods: ['GET', 'POST', 'OPTIONS'],
+   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 app.use(express.static('public'));
 
 // ============ WEB SOCKET SERVER ============
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor v7.0 - 3-Step Pattern AI`);
-    console.log(`📍 http://localhost:${PORT}`);
-    console.log(`🚀 Server running on port ${PORT}\n`);
-    initNewAI();
-    setTimeout(checkDatabaseOnStartup, 2000);
+   console.log(`\n⚡ Lightning Dice Predictor v7.0 - 3-Step Pattern AI`);
+   console.log(`📍 http://localhost:${PORT}`);
+   console.log(`🚀 Server running on port ${PORT}\n`);
+   initNewAI();
+   setTimeout(checkDatabaseOnStartup, 2000);
 });
 
 const wss = new WebSocket.Server({ server });
@@ -171,389 +212,412 @@ const wss = new WebSocket.Server({ server });
 const clients = new Set();
 
 wss.on('connection', (ws) => {
-    ws.setMaxListeners(20);
-    
-    ws.once('error', (error) => {
-        console.error('WebSocket error:', error);
-    });
-    
-    clients.add(ws);
-    console.log(`🔌 Client connected. Total clients: ${clients.size}`);
-    
-    ws.on('close', () => {
-        clients.delete(ws);
-        console.log(`🔌 Client disconnected. Total clients: ${clients.size}`);
-    });
+   ws.setMaxListeners(20);
+   
+   ws.once('error', (error) => {
+       console.error('WebSocket error:', error);
+   });
+   
+   clients.add(ws);
+   console.log(`🔌 Client connected. Total clients: ${clients.size}`);
+   
+   ws.on('close', () => {
+       clients.delete(ws);
+       console.log(`🔌 Client disconnected. Total clients: ${clients.size}`);
+   });
 });
 
 function broadcast(data) {
-    const message = JSON.stringify(data);
-    clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-        }
-    });
+   const message = JSON.stringify(data);
+   clients.forEach(client => {
+       if (client.readyState === WebSocket.OPEN) {
+           client.send(message);
+       }
+   });
 }
 
 // ============ DATA RETRIEVAL HELPER FUNCTIONS ============
 
 function getResultsData(limit = 100) {
-    return new Promise((resolve) => {
-        db.all(`SELECT id, total, group_name as groupName, multiplier, dice_values as diceValues, timestamp 
-                FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, rows) => {
-            if (err) {
-                console.error('Error in getResultsData:', err);
-                resolve([]);
-            } else {
-                const formatted = (rows || []).map(row => ({
-                    id: row.id,
-                    total: row.total,
-                    group: row.groupName,
-                    multiplier: row.multiplier,
-                    diceValues: row.diceValues,
-                    timestamp: row.timestamp
-                }));
-                formatted.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                console.log(`✅ getResultsData returning ${formatted.length} results`);
-                resolve(formatted);
-            }
-        });
-    });
+   return new Promise((resolve) => {
+       db.all(`SELECT id, total, group_name as groupName, multiplier, dice_values as diceValues, timestamp 
+               FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, rows) => {
+           if (err) {
+               console.error('Error in getResultsData:', err);
+               resolve([]);
+           } else {
+               const formatted = (rows || []).map(row => ({
+                   id: row.id,
+                   total: row.total,
+                   group: row.groupName,
+                   multiplier: row.multiplier,
+                   diceValues: row.diceValues,
+                   timestamp: row.timestamp
+               }));
+               formatted.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+               console.log(`✅ getResultsData returning ${formatted.length} results`);
+               resolve(formatted);
+           }
+       });
+   });
 }
 
 function getPredictionsData(limit = 500) {
-    return new Promise((resolve) => {
-        db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
-                FROM predictions p
-                LEFT JOIN results r ON p.result_id = r.id
-                ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, rows) => {
-            if (err) {
-                console.error('Error in getPredictionsData:', err);
-                resolve([]);
-            } else {
-                const transformed = (rows || []).map(p => ({
-                    id: p.result_id,
-                    time: p.prediction_timestamp ? new Date(p.prediction_timestamp).toLocaleTimeString() : '--',
-                    dice: p.dice_values || '--',
-                    total: p.total || '--',
-                    actualGroup: p.actual_group || '?',
-                    pattern3step: p.pattern_3step || '--',
-                    protectionType: p.protection_type || '--',
-                    predictedGroup: p.predicted_group || '--',
-                    isCorrect: p.is_correct === 1,
-                    timestamp: new Date(p.prediction_timestamp),
-                    isPending: p.actual_group === null
-                }));
-                resolve(transformed);
-            }
-        });
-    });
+   return new Promise((resolve) => {
+       db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
+               FROM predictions p
+               LEFT JOIN results r ON p.result_id = r.id
+               ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, rows) => {
+           if (err) {
+               console.error('Error in getPredictionsData:', err);
+               resolve([]);
+           } else {
+               const transformed = (rows || []).map(p => ({
+                   id: p.result_id,
+                   time: p.prediction_timestamp ? new Date(p.prediction_timestamp).toLocaleTimeString() : '--',
+                   dice: p.dice_values || '--',
+                   total: p.total || '--',
+                   actualGroup: p.actual_group || '?',
+                   pattern3step: p.pattern_3step || '--',
+                   protectionType: p.protection_type || '--',
+                   predictedGroup: p.predicted_group || '--',
+                   isCorrect: p.is_correct === 1,
+                   timestamp: new Date(p.prediction_timestamp),
+                   isPending: p.actual_group === null
+               }));
+               resolve(transformed);
+           }
+       });
+   });
 }
 
 function getStatsData() {
-    return new Promise((resolve) => {
-        db.get(`SELECT 
-                    COUNT(*) as totalRounds,
-                    COALESCE(AVG(total), 0) as avgResult,
-                    (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as mostActiveGroup
-                FROM results`, (err, stats) => {
-            if (err) {
-                console.error('Error in getStatsData:', err);
-                resolve({ totalRounds: 0, avgResult: 0, mostActiveGroup: 'LOW', lightningBoost: 0 });
-            } else {
-                db.get(`SELECT COUNT(*) as lightningCount FROM results WHERE multiplier > 10`, (err, lightning) => {
-                    db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
-                        const lightningPercent = total && total.total > 0 ? (lightning?.lightningCount || 0) / total.total * 100 : 0;
-                        resolve({
-                            totalRounds: stats?.totalRounds || 0,
-                            avgResult: stats?.avgResult ? stats.avgResult.toFixed(2) : 0,
-                            mostActiveGroup: stats?.mostActiveGroup || 'LOW',
-                            lightningBoost: Math.round(lightningPercent)
-                        });
-                    });
-                });
-            }
-        });
-    });
+   return new Promise((resolve) => {
+       db.get(`SELECT 
+                   COUNT(*) as totalRounds,
+                   COALESCE(AVG(total), 0) as avgResult,
+                   (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as mostActiveGroup
+               FROM results`, (err, stats) => {
+           if (err) {
+               console.error('Error in getStatsData:', err);
+               resolve({ totalRounds: 0, avgResult: 0, mostActiveGroup: 'LOW', lightningBoost: 0 });
+           } else {
+               db.get(`SELECT COUNT(*) as lightningCount FROM results WHERE multiplier > 10`, (err, lightning) => {
+                   db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
+                       const lightningPercent = total && total.total > 0 ? (lightning?.lightningCount || 0) / total.total * 100 : 0;
+                       resolve({
+                           totalRounds: stats?.totalRounds || 0,
+                           avgResult: stats?.avgResult ? stats.avgResult.toFixed(2) : 0,
+                           mostActiveGroup: stats?.mostActiveGroup || 'LOW',
+                           lightningBoost: Math.round(lightningPercent)
+                       });
+                   });
+               });
+           }
+       });
+   });
 }
 
 function getAIStatsData() {
-    return new Promise((resolve) => {
-        db.get(`SELECT total_predictions, correct_predictions, accuracy FROM ai_stats ORDER BY id DESC LIMIT 1`, (err, row) => {
-            if (err) {
-                console.error('Error in getAIStatsData:', err);
-                resolve({ totalPredictions: 0, accuracy: 0 });
-            } else {
-                resolve(row || { totalPredictions: 0, accuracy: 0 });
-            }
-        });
-    });
+   return new Promise((resolve) => {
+       db.get(`SELECT total_predictions, correct_predictions, accuracy FROM ai_stats ORDER BY id DESC LIMIT 1`, (err, row) => {
+           if (err) {
+               console.error('Error in getAIStatsData:', err);
+               resolve({ totalPredictions: 0, accuracy: 0 });
+           } else {
+               resolve(row || { totalPredictions: 0, accuracy: 0 });
+           }
+       });
+   });
 }
 
 function getPreviousResultsForPrediction(limit = 10) {
-    return new Promise((resolve) => {
-        db.all(`SELECT group_name as group_value, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
-            if (err) {
-                console.error('Error getting previous results:', err);
-                resolve([]);
-            } else {
-                console.log(`📊 getPreviousResultsForPrediction returned ${results?.length || 0} results`);
-                if (results && results.length > 0) {
-                    console.log(`   Last groups: ${results.map(r => r.group_value).join(', ')}`);
-                    const formatted = results.map(r => ({ group: r.group_value, id: r.id, timestamp: r.timestamp }));
-                    resolve(formatted);
-                } else {
-                    resolve([]);
-                }
-            }
-        });
-    });
+   return new Promise((resolve) => {
+       db.all(`SELECT group_name as group_value, id, timestamp FROM results ORDER BY timestamp DESC LIMIT ?`, [limit], (err, results) => {
+           if (err) {
+               console.error('Error getting previous results:', err);
+               resolve([]);
+           } else {
+               console.log(`📊 getPreviousResultsForPrediction returned ${results?.length || 0} results`);
+               if (results && results.length > 0) {
+                   console.log(`   Last groups: ${results.map(r => r.group_value).join(', ')}`);
+                   const formatted = results.map(r => ({ group: r.group_value, id: r.id, timestamp: r.timestamp }));
+                   resolve(formatted);
+               } else {
+                   resolve([]);
+               }
+           }
+       });
+   });
 }
 
 // ============ GET LAST 3 RESULTS FOR PATTERN DETECTION ============
 async function getLast3Results() {
-    const results = await getPreviousResultsForPrediction(3);
-    if (results.length >= 3) {
-        return [results[2].group, results[1].group, results[0].group]; // [oldest, middle, newest]
-    }
-    return null;
+   const results = await getPreviousResultsForPrediction(3);
+   if (results.length >= 3) {
+       return [results[2].group, results[1].group, results[0].group]; // [oldest, middle, newest]
+   }
+   return null;
 }
 
-// ============ NEW PREDICTION FUNCTION (TO BE IMPLEMENTED) ============
+// ============ PREDICTION FUNCTION USING NEW AI ============
 async function getCurrentPredictionData() {
-    const last3Results = await getLast3Results();
-    
-    if (!last3Results) {
-        console.log(`⚠️ Not enough history for prediction (need 3 results, waiting...)`);
-        return {
-            pattern3step: null,
-            protectionType: null,
-            predictedGroup: 'WAITING',
-            confidence: 0,
-            waitingForData: true,
-            last3Results: null
-        };
-    }
-    
-    console.log(`🔮 Checking pattern for: ${last3Results.join(' → ')}`);
-    
-    // TODO: Implement your pattern detection logic here
-    // This is a placeholder - you will replace this with your actual AI logic
-    
-    // Temporary placeholder response
-    return {
-        pattern3step: `${last3Results[0]}→${last3Results[1]}→${last3Results[2]}`,
-        protectionType: 'WAITING_FOR_AI',
-        predictedGroup: '?',
-        confidence: 0,
-        waitingForData: true,
-        last3Results: last3Results,
-        message: 'AI logic not yet implemented - waiting for new-ai-logic.js'
-    };
+   const last3Results = await getLast3Results();
+   
+   if (!last3Results || last3Results.length < 3) {
+       console.log(`⚠️ Not enough history for prediction (need 3 results, waiting...)`);
+       return {
+           pattern3step: null,
+           protectionType: null,
+           predictedGroup: 'WAITING',
+           confidence: 0,
+           waitingForData: true,
+           last3Results: null,
+           status: "WAITING",
+           message: `Waiting for 3 results. Currently have ${last3Results?.length || 0}`
+       };
+   }
+   
+   console.log(`🔮 Checking pattern for: ${last3Results.join(' → ')}`);
+   
+   // Use the new 3-Step Pattern AI
+   if (serverAI) {
+       const prediction = serverAI.predict(last3Results, "CONTINUE");
+       
+       return {
+           pattern3step: prediction.pattern,
+           protectionType: prediction.protectionType,
+           predictedGroup: prediction.predictedGroup,
+           confidence: prediction.confidence,
+           waitingForData: prediction.status === "WAITING",
+           last3Results: last3Results,
+           status: prediction.status,
+           description: prediction.description,
+           continueGroup: prediction.continueGroup,
+           switchGroup: prediction.switchGroup
+       };
+   }
+   
+   // Fallback (should not happen after AI is initialized)
+   console.log(`⚠️ AI not initialized, using fallback prediction`);
+   const patternString = `${last3Results[0]}→${last3Results[1]}→${last3Results[2]}`;
+   return {
+       pattern3step: patternString,
+       protectionType: 'CONTINUE',
+       predictedGroup: last3Results[0],
+       confidence: 50,
+       waitingForData: false,
+       last3Results: last3Results,
+       status: "PREDICTION_READY",
+       description: "Fallback prediction (AI not ready)"
+   };
 }
 
 // ============ PREDICTION FUNCTIONS ============
 
 async function savePredictionOnly(resultId, last3Results) {
-    if (!last3Results) {
-        console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history (need 3 results)`);
-        return null;
-    }
-    
-    console.log(`🔮 Generating prediction for ${resultId}...`);
-    console.log(`   Last 3 Results: ${last3Results.join(' → ')}`);
-    
-    const prediction = await getCurrentPredictionData();
-    
-    console.log(`\n📝 SAVING PREDICTION for ${resultId}:`);
-    console.log(`   Pattern (3-Step): ${prediction.pattern3step || 'N/A'}`);
-    console.log(`   Protection Type: ${prediction.protectionType || 'N/A'}`);
-    console.log(`   Predicted Group: ${prediction.predictedGroup || 'N/A'}`);
-    
-    const existing = await new Promise((resolve) => {
-        db.get(`SELECT id FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
-            if (err) {
-                console.error('Error checking existing prediction:', err);
-                resolve(null);
-            } else {
-                resolve(row);
-            }
-        });
-    });
-    
-    if (existing) {
-        return new Promise((resolve) => {
-            db.run(`UPDATE predictions SET 
-                    pattern_3step = ?,
-                    protection_type = ?,
-                    predicted_group = ?,
-                    prediction_timestamp = ?
-                    WHERE result_id = ?`,
-                [prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString(), resultId],
-                (err) => {
-                    if (err) {
-                        console.error('Error updating prediction:', err);
-                        resolve(null);
-                    } else {
-                        console.log(`✅ Prediction UPDATED for ${resultId}`);
-                        resolve(prediction);
-                    }
-                }
-            );
-        });
-    } else {
-        return new Promise((resolve) => {
-            const stmt = db.prepare(`INSERT INTO predictions (
-                    result_id,
-                    pattern_3step,
-                    protection_type,
-                    predicted_group,
-                    prediction_timestamp,
-                    is_correct
-                ) VALUES (?, ?, ?, ?, ?, -1)`);
-            
-            stmt.run([resultId, prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString()], (err) => {
-                if (err) {
-                    console.error('Error saving prediction:', err);
-                    resolve(null);
-                } else {
-                    console.log(`✅ Prediction INSERTED for ${resultId}`);
-                    resolve(prediction);
-                }
-            });
-            stmt.finalize();
-        });
-    }
+   if (!last3Results) {
+       console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history (need 3 results)`);
+       return null;
+   }
+   
+   console.log(`🔮 Generating prediction for ${resultId}...`);
+   console.log(`   Last 3 Results: ${last3Results.join(' → ')}`);
+   
+   const prediction = await getCurrentPredictionData();
+   
+   console.log(`\n📝 SAVING PREDICTION for ${resultId}:`);
+   console.log(`   Pattern (3-Step): ${prediction.pattern3step || 'N/A'}`);
+   console.log(`   Protection Type: ${prediction.protectionType || 'N/A'}`);
+   console.log(`   Predicted Group: ${prediction.predictedGroup || 'N/A'}`);
+   
+   const existing = await new Promise((resolve) => {
+       db.get(`SELECT id FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
+           if (err) {
+               console.error('Error checking existing prediction:', err);
+               resolve(null);
+           } else {
+               resolve(row);
+           }
+       });
+   });
+   
+   if (existing) {
+       return new Promise((resolve) => {
+           db.run(`UPDATE predictions SET 
+                   pattern_3step = ?,
+                   protection_type = ?,
+                   predicted_group = ?,
+                   prediction_timestamp = ?
+                   WHERE result_id = ?`,
+               [prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString(), resultId],
+               (err) => {
+                   if (err) {
+                       console.error('Error updating prediction:', err);
+                       resolve(null);
+                   } else {
+                       console.log(`✅ Prediction UPDATED for ${resultId}`);
+                       resolve(prediction);
+                   }
+               }
+           );
+       });
+   } else {
+       return new Promise((resolve) => {
+           const stmt = db.prepare(`INSERT INTO predictions (
+                   result_id,
+                   pattern_3step,
+                   protection_type,
+                   predicted_group,
+                   prediction_timestamp,
+                   is_correct
+               ) VALUES (?, ?, ?, ?, ?, -1)`);
+           
+           stmt.run([resultId, prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString()], (err) => {
+               if (err) {
+                   console.error('Error saving prediction:', err);
+                   resolve(null);
+               } else {
+                   console.log(`✅ Prediction INSERTED for ${resultId}`);
+                   resolve(prediction);
+               }
+           });
+           stmt.finalize();
+       });
+   }
 }
 
 async function updatePredictionWithResult(resultId, actualGroup) {
-    console.log(`\n📊 UPDATING PREDICTION with result for ${resultId}:`);
-    console.log(`   ACTUAL RESULT: ${actualGroup}`);
-    
-    const prediction = await new Promise((resolve) => {
-        db.get(`SELECT predicted_group, pattern_3step, protection_type FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
-            if (err) {
-                console.error('Error fetching prediction:', err);
-                resolve(null);
-            } else {
-                resolve(row);
-            }
-        });
-    });
-    
-    if (!prediction) {
-        console.log(`⚠️ No prediction found for ${resultId}, cannot update`);
-        return null;
-    }
-    
-    const isCorrect = (prediction.predicted_group === actualGroup) ? 1 : 0;
-    
-    console.log(`   PREDICTED: ${prediction.predicted_group} → ${isCorrect ? '✓ CORRECT' : '✗ WRONG'}`);
-    
-    // ============ TELEGRAM NOTIFICATION LOGIC ============
-    const nextRoundPrediction = await getCurrentPredictionData();
-    const nextPredictionText = nextRoundPrediction.predictedGroup || 'WAITING';
-    
-    if (isCorrect === 1) {
-        if (alertTriggered) {
-            console.log('🔔 AI is correct again. Telegram alerts will stop.');
-        }
-        aiMissCount = 0;
-        alertTriggered = false;
-    } else {
-        aiMissCount++;
-        console.log(`📉 AI miss #${aiMissCount}`);
-        
-        if (aiMissCount >= 4) {
-            await sendTelegramNotification(
-                aiMissCount,
-                actualGroup,
-                prediction.predicted_group,
-                nextPredictionText
-            );
-            alertTriggered = true;
-        }
-    }
-    // ============ END TELEGRAM LOGIC ============
-    
-    return new Promise((resolve) => {
-        db.run(`UPDATE predictions SET
-                actual_group = ?,
-                actual_timestamp = ?,
-                is_correct = ?
-                WHERE result_id = ?`,
-            [actualGroup, new Date().toISOString(), isCorrect, resultId],
-            async (err) => {
-                if (err) {
-                    console.error('Error updating prediction with result:', err);
-                } else {
-                    console.log(`✅ Prediction UPDATED with result for ${resultId}`);
-                    await updateAIStatsTable(isCorrect === 1);
-                    
-                    // TODO: Update your AI model with the result
-                    // if (serverAI) await serverAI.updateWithResult(actualGroup);
-                }
-                resolve({ prediction, correct: isCorrect });
-            }
-        );
-    });
+   console.log(`\n📊 UPDATING PREDICTION with result for ${resultId}:`);
+   console.log(`   ACTUAL RESULT: ${actualGroup}`);
+   
+   const prediction = await new Promise((resolve) => {
+       db.get(`SELECT predicted_group, pattern_3step, protection_type FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
+           if (err) {
+               console.error('Error fetching prediction:', err);
+               resolve(null);
+           } else {
+               resolve(row);
+           }
+       });
+   });
+   
+   if (!prediction) {
+       console.log(`⚠️ No prediction found for ${resultId}, cannot update`);
+       return null;
+   }
+   
+   const isCorrect = (prediction.predicted_group === actualGroup) ? 1 : 0;
+   
+   console.log(`   PREDICTED: ${prediction.predicted_group} → ${isCorrect ? '✓ CORRECT' : '✗ WRONG'}`);
+   
+   // Update the AI model with the result for learning
+   if (serverAI) {
+       const updateResult = serverAI.updateWithResult(actualGroup);
+       console.log(`   AI Accuracy updated: ${serverAI.getAccuracy().toFixed(1)}%`);
+   }
+   
+   // ============ TELEGRAM NOTIFICATION LOGIC ============
+   const nextRoundPrediction = await getCurrentPredictionData();
+   const nextPredictionText = nextRoundPrediction.predictedGroup || 'WAITING';
+   
+   if (isCorrect === 1) {
+       if (alertTriggered) {
+           console.log('🔔 AI is correct again. Telegram alerts will stop.');
+       }
+       aiMissCount = 0;
+       alertTriggered = false;
+   } else {
+       aiMissCount++;
+       console.log(`📉 AI miss #${aiMissCount}`);
+       
+       if (aiMissCount >= 4 && !alertTriggered) {
+           await sendTelegramNotification(
+               aiMissCount,
+               actualGroup,
+               prediction.predicted_group,
+               nextPredictionText
+           );
+           alertTriggered = true;
+       }
+   }
+   // ============ END TELEGRAM LOGIC ============
+   
+   return new Promise((resolve) => {
+       db.run(`UPDATE predictions SET
+               actual_group = ?,
+               actual_timestamp = ?,
+               is_correct = ?
+               WHERE result_id = ?`,
+           [actualGroup, new Date().toISOString(), isCorrect, resultId],
+           async (err) => {
+               if (err) {
+                   console.error('Error updating prediction with result:', err);
+               } else {
+                   console.log(`✅ Prediction UPDATED with result for ${resultId}`);
+                   await updateAIStatsTable(isCorrect === 1);
+               }
+               resolve({ prediction, correct: isCorrect });
+           }
+       );
+   });
 }
 
 async function updateAIStatsTable(correct) {
-    return new Promise((resolve) => {
-        db.get(`SELECT total_predictions, correct_predictions FROM ai_stats ORDER BY id DESC LIMIT 1`, (err, stat) => {
-            const total = (stat ? stat.total_predictions : 0) + 1;
-            const correctTotal = (stat ? stat.correct_predictions : 0) + (correct ? 1 : 0);
-            const accuracy = (correctTotal / total) * 100;
-            
-            db.run(`INSERT INTO ai_stats (total_predictions, correct_predictions, accuracy, last_updated)
-                    VALUES (?, ?, ?, ?)`,
-                [total, correctTotal, accuracy, new Date().toISOString()],
-                () => resolve()
-            );
-        });
-    });
+   return new Promise((resolve) => {
+       db.get(`SELECT total_predictions, correct_predictions FROM ai_stats ORDER BY id DESC LIMIT 1`, (err, stat) => {
+           const total = (stat ? stat.total_predictions : 0) + 1;
+           const correctTotal = (stat ? stat.correct_predictions : 0) + (correct ? 1 : 0);
+           const accuracy = (correctTotal / total) * 100;
+           
+           db.run(`INSERT INTO ai_stats (total_predictions, correct_predictions, accuracy, last_updated)
+                   VALUES (?, ?, ?, ?)`,
+               [total, correctTotal, accuracy, new Date().toISOString()],
+               () => resolve()
+           );
+       });
+   });
 }
 
 // ============ BROADCAST FUNCTIONS ============
 
 async function broadcastFullDataOnNewResult(gameResult, predictionData) {
-    console.log(`📡 Preparing broadcast for ${clients.size} clients...`);
-    
-    const [results, predictions, stats, aiStats] = await Promise.all([
-        getResultsData(100),
-        getPredictionsData(500),
-        getStatsData(),
-        getAIStatsData()
-    ]);
-    
-    results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    
-    const message = JSON.stringify({
-        type: 'new_result',
-        result: {
-            id: gameResult.id,
-            total: gameResult.total,
-            group: gameResult.group_name,
-            multiplier: gameResult.multiplier,
-            diceValues: gameResult.dice_values,
-            timestamp: gameResult.timestamp
-        },
-        prediction: predictionData,
-        history: predictions,
-        stats: stats,
-        aiStats: aiStats,
-        allResults: results
-    });
-    
-    let sentCount = 0;
-    clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-            sentCount++;
-        }
-    });
-    console.log(`✅ Broadcast sent to ${sentCount} clients`);
+   console.log(`📡 Preparing broadcast for ${clients.size} clients...`);
+   
+   const [results, predictions, stats, aiStats] = await Promise.all([
+       getResultsData(100),
+       getPredictionsData(500),
+       getStatsData(),
+       getAIStatsData()
+   ]);
+   
+   results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+   
+   const message = JSON.stringify({
+       type: 'new_result',
+       result: {
+           id: gameResult.id,
+           total: gameResult.total,
+           group: gameResult.group_name,
+           multiplier: gameResult.multiplier,
+           diceValues: gameResult.dice_values,
+           timestamp: gameResult.timestamp
+       },
+       prediction: predictionData,
+       history: predictions,
+       stats: stats,
+       aiStats: aiStats,
+       allResults: results
+   });
+   
+   let sentCount = 0;
+   clients.forEach(client => {
+       if (client.readyState === WebSocket.OPEN) {
+           client.send(message);
+           sentCount++;
+       }
+   });
+   console.log(`✅ Broadcast sent to ${sentCount} clients`);
 }
 
 // ============ DATA COLLECTION ============
@@ -563,317 +627,329 @@ let isCollecting = false;
 let pendingPredictions = new Set();
 
 function getGroup(number) {
-    if (number >= 3 && number <= 9) return 'LOW';
-    if (number >= 10 && number <= 11) return 'MEDIUM';
-    if (number >= 12 && number <= 18) return 'HIGH';
-    return 'UNKNOWN';
+   if (number >= 3 && number <= 9) return 'LOW';
+   if (number >= 10 && number <= 11) return 'MEDIUM';
+   if (number >= 12 && number <= 18) return 'HIGH';
+   return 'UNKNOWN';
 }
 
 async function saveGameResult(game) {
-    const total = game.result.total;
-    const group = getGroup(total);
-    const multipliers = game.result.luckyNumbersList || [];
-    const multiplierItem = multipliers.find(m => m.outcome === `LightningDice_Total${total}`);
-    const diceValues = game.result.value || '⚀ ⚀ ⚀';
-    
-    const result = {
-        id: game.id,
-        total: total,
-        group_name: group,
-        multiplier: multiplierItem ? multiplierItem.multiplier : 1,
-        dice_values: diceValues,
-        timestamp: new Date(game.settledAt).toISOString(),
-        winners: game.totalWinners || 0,
-        payout: game.totalAmount || 0
-    };
-    
-    return new Promise((resolve, reject) => {
-        db.run(`INSERT OR REPLACE INTO results (id, total, group_name, multiplier, dice_values, timestamp, winners, payout)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [result.id, result.total, result.group_name, result.multiplier, result.dice_values, result.timestamp, result.winners, result.payout],
-            (err) => {
-                if (err) {
-                    console.error('Error saving result:', err);
-                    reject(err);
-                } else {
-                    console.log(`💾 Result saved: ${result.id} -> ${result.group_name}`);
-                    setTimeout(() => resolve(result), 100);
-                }
-            }
-        );
-    });
+   const total = game.result.total;
+   const group = getGroup(total);
+   const multipliers = game.result.luckyNumbersList || [];
+   const multiplierItem = multipliers.find(m => m.outcome === `LightningDice_Total${total}`);
+   const diceValues = game.result.value || '⚀ ⚀ ⚀';
+   
+   const result = {
+       id: game.id,
+       total: total,
+       group_name: group,
+       multiplier: multiplierItem ? multiplierItem.multiplier : 1,
+       dice_values: diceValues,
+       timestamp: new Date(game.settledAt).toISOString(),
+       winners: game.totalWinners || 0,
+       payout: game.totalAmount || 0
+   };
+   
+   return new Promise((resolve, reject) => {
+       db.run(`INSERT OR REPLACE INTO results (id, total, group_name, multiplier, dice_values, timestamp, winners, payout)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           [result.id, result.total, result.group_name, result.multiplier, result.dice_values, result.timestamp, result.winners, result.payout],
+           (err) => {
+               if (err) {
+                   console.error('Error saving result:', err);
+                   reject(err);
+               } else {
+                   console.log(`💾 Result saved: ${result.id} -> ${result.group_name}`);
+                   setTimeout(() => resolve(result), 100);
+               }
+           }
+       );
+   });
 }
 
 async function collectData() {
-    if (isCollecting) return;
-    isCollecting = true;
-    
-    try {
-        const response = await axios.get('https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice/latest', {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/json'
-            },
-            timeout: 10000
-        });
-        
-        if (response.data && response.data.data) {
-            const game = response.data.data;
-            const gameId = game.id;
-            
-            if (lastGameId !== gameId) {
-                lastGameId = gameId;
-                
-                const exists = await new Promise((resolve) => {
-                    db.get(`SELECT id FROM results WHERE id = ?`, [gameId], (err, row) => {
-                        resolve(!!row);
-                    });
-                });
-                
-                if (!exists) {
-                    console.log(`🆕 New game detected: ${gameId}`);
-                    
-                    const last3Results = await getLast3Results();
-                    console.log(`📜 Last 3 results for prediction: ${last3Results ? last3Results.join(' → ') : 'not enough data'}`);
-                    
-                    let predictionData = null;
-                    
-                    if (last3Results && last3Results.length >= 3) {
-                        pendingPredictions.add(gameId);
-                        console.log(`🔮 Saving prediction FIRST for ${gameId}...`);
-                        predictionData = await savePredictionOnly(gameId, last3Results);
-                        if (predictionData) {
-                            broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
-                            console.log(`✅ Prediction SAVED before result for ${gameId}`);
-                        } else {
-                            console.log(`❌ Prediction SAVE FAILED for ${gameId}`);
-                        }
-                    } else {
-                        console.log(`⚠️ Cannot save prediction: need 3+ history, got ${last3Results?.length || 0}`);
-                    }
-                    
-                    const savedResult = await saveGameResult(game);
-                    
-                    const totalResult = game.result.total;
-                    const group = getGroup(totalResult);
-                    
-                    await updatePredictionWithResult(gameId, group);
-                    
-                    pendingPredictions.delete(gameId);
-                    
-                    const currentPrediction = await getCurrentPredictionData();
-                    await broadcastFullDataOnNewResult(savedResult, currentPrediction);
-                    
-                    console.log(`✅ Complete flow done for game: ${gameId}`);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('❌ Data collection error:', error.message);
-    }
-    
-    isCollecting = false;
+   if (isCollecting) return;
+   isCollecting = true;
+   
+   try {
+       const response = await axios.get('https://api-cs.casino.org/svc-evolution-game-events/api/lightningdice/latest', {
+           headers: {
+               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+               'Accept': 'application/json'
+           },
+           timeout: 10000
+       });
+       
+       if (response.data && response.data.data) {
+           const game = response.data.data;
+           const gameId = game.id;
+           
+           if (lastGameId !== gameId) {
+               lastGameId = gameId;
+               
+               const exists = await new Promise((resolve) => {
+                   db.get(`SELECT id FROM results WHERE id = ?`, [gameId], (err, row) => {
+                       resolve(!!row);
+                   });
+               });
+               
+               if (!exists) {
+                   console.log(`🆕 New game detected: ${gameId}`);
+                   
+                   const last3Results = await getLast3Results();
+                   console.log(`📜 Last 3 results for prediction: ${last3Results ? last3Results.join(' → ') : 'not enough data'}`);
+                   
+                   let predictionData = null;
+                   
+                   if (last3Results && last3Results.length >= 3) {
+                       pendingPredictions.add(gameId);
+                       console.log(`🔮 Saving prediction FIRST for ${gameId}...`);
+                       predictionData = await savePredictionOnly(gameId, last3Results);
+                       if (predictionData) {
+                           broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
+                           console.log(`✅ Prediction SAVED before result for ${gameId}`);
+                       } else {
+                           console.log(`❌ Prediction SAVE FAILED for ${gameId}`);
+                       }
+                   } else {
+                       console.log(`⚠️ Cannot save prediction: need 3+ history, got ${last3Results?.length || 0}`);
+                   }
+                   
+                   const savedResult = await saveGameResult(game);
+                   
+                   const totalResult = game.result.total;
+                   const group = getGroup(totalResult);
+                   
+                   await updatePredictionWithResult(gameId, group);
+                   
+                   pendingPredictions.delete(gameId);
+                   
+                   const currentPrediction = await getCurrentPredictionData();
+                   await broadcastFullDataOnNewResult(savedResult, currentPrediction);
+                   
+                   console.log(`✅ Complete flow done for game: ${gameId}`);
+               }
+           }
+       }
+   } catch (error) {
+       console.error('❌ Data collection error:', error.message);
+   }
+   
+   isCollecting = false;
 }
 
 async function checkDatabaseOnStartup() {
-    console.log('\n🔍 STARTUP DATABASE CHECK:');
-    const resultCount = await new Promise((resolve) => {
-        db.get(`SELECT COUNT(*) as count FROM results`, (err, row) => {
-            resolve(row ? row.count : 0);
-        });
-    });
-    console.log(`   📊 Total results in database: ${resultCount}`);
-    
-    if (resultCount > 0) {
-        const lastResults = await new Promise((resolve) => {
-            db.all(`SELECT group_name, timestamp FROM results ORDER BY timestamp DESC LIMIT 5`, (err, rows) => {
-                resolve(rows || []);
-            });
-        });
-        console.log(`   🎲 Last 5 results:`, lastResults.map(r => r.group_name).join(' → '));
-        
-        const last3 = lastResults.slice(0, 3).map(r => r.group_name);
-        console.log(`   📐 Last 3-step pattern: ${last3.join(' → ')}`);
-    }
-    console.log('');
+   console.log('\n🔍 STARTUP DATABASE CHECK:');
+   const resultCount = await new Promise((resolve) => {
+       db.get(`SELECT COUNT(*) as count FROM results`, (err, row) => {
+           resolve(row ? row.count : 0);
+       });
+   });
+   console.log(`   📊 Total results in database: ${resultCount}`);
+   
+   if (resultCount > 0) {
+       const lastResults = await new Promise((resolve) => {
+           db.all(`SELECT group_name, timestamp FROM results ORDER BY timestamp DESC LIMIT 5`, (err, rows) => {
+               resolve(rows || []);
+           });
+       });
+       console.log(`   🎲 Last 5 results:`, lastResults.map(r => r.group_name).join(' → '));
+       
+       const last3 = lastResults.slice(0, 3).map(r => r.group_name);
+       console.log(`   📐 Last 3-step pattern: ${last3.join(' → ')}`);
+       
+       // Check if pattern matches any of the 6 patterns
+       if (serverAI) {
+           const patternString = `${last3[0]}→${last3[1]}→${last3[2]}`;
+           const isMatch = serverAI.isPatternMatch(patternString);
+           console.log(`   🔍 Pattern "${patternString}" - ${isMatch ? 'MATCHES ✓' : 'DOES NOT MATCH (WAIT MODE) ✗'}`);
+       }
+   }
+   console.log('');
 }
 
 // ============ API ENDPOINTS ============
 
 app.get('/api/all-data', async (req, res) => {
-    try {
-        const [results, predictions, stats, aiStats, currentPrediction] = await Promise.all([
-            getResultsData(100),
-            getPredictionsData(500),
-            getStatsData(),
-            getAIStatsData(),
-            getCurrentPredictionData()
-        ]);
-        
-        results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        res.json({
-            success: true,
-            results: results,
-            predictions: predictions,
-            stats: stats,
-            aiStats: aiStats,
-            currentPrediction: currentPrediction
-        });
-    } catch (error) {
-        console.error('Error loading all data:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+   try {
+       const [results, predictions, stats, aiStats, currentPrediction] = await Promise.all([
+           getResultsData(100),
+           getPredictionsData(500),
+           getStatsData(),
+           getAIStatsData(),
+           getCurrentPredictionData()
+       ]);
+       
+       results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+       
+       res.json({
+           success: true,
+           results: results,
+           predictions: predictions,
+           stats: stats,
+           aiStats: aiStats,
+           currentPrediction: currentPrediction
+       });
+   } catch (error) {
+       console.error('Error loading all data:', error);
+       res.status(500).json({ success: false, error: error.message });
+   }
 });
 
 app.get('/api/predictions', (req, res) => {
-    const limit = parseInt(req.query.limit) || 500;
-    
-    db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
-            FROM predictions p
-            LEFT JOIN results r ON p.result_id = r.id
-            ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, predictions) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        
-        const transformed = predictions.map(p => ({
-            result_id: p.result_id,
-            total: p.total || null,
-            actual_group: p.actual_group || null,
-            dice_values: p.dice_values || null,
-            result_time: p.result_time || null,
-            pattern_3step: p.pattern_3step,
-            protection_type: p.protection_type,
-            predicted_group: p.predicted_group,
-            is_correct: p.is_correct,
-            prediction_timestamp: p.prediction_timestamp,
-            is_pending: p.actual_group === null
-        }));
-        
-        res.json(transformed);
-    });
+   const limit = parseInt(req.query.limit) || 500;
+   
+   db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
+           FROM predictions p
+           LEFT JOIN results r ON p.result_id = r.id
+           ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, predictions) => {
+       if (err) {
+           res.status(500).json({ error: err.message });
+           return;
+       }
+       
+       const transformed = predictions.map(p => ({
+           result_id: p.result_id,
+           total: p.total || null,
+           actual_group: p.actual_group || null,
+           dice_values: p.dice_values || null,
+           result_time: p.result_time || null,
+           pattern_3step: p.pattern_3step,
+           protection_type: p.protection_type,
+           predicted_group: p.predicted_group,
+           is_correct: p.is_correct,
+           prediction_timestamp: p.prediction_timestamp,
+           is_pending: p.actual_group === null
+       }));
+       
+       res.json(transformed);
+   });
 });
 
 app.get('/api/results', (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = (page - 1) * limit;
-    
-    db.all(`SELECT * FROM results ORDER BY timestamp DESC LIMIT ? OFFSET ?`, [limit, offset], (err, results) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        
-        db.get(`SELECT COUNT(*) as total FROM results`, (err, count) => {
-            res.json({
-                data: results,
-                pagination: {
-                    page: page,
-                    limit: limit,
-                    total: count ? count.total : 0,
-                    pages: Math.ceil((count ? count.total : 0) / limit)
-                }
-            });
-        });
-    });
+   const page = parseInt(req.query.page) || 1;
+   const limit = parseInt(req.query.limit) || 50;
+   const offset = (page - 1) * limit;
+   
+   db.all(`SELECT * FROM results ORDER BY timestamp DESC LIMIT ? OFFSET ?`, [limit, offset], (err, results) => {
+       if (err) {
+           res.status(500).json({ error: err.message });
+           return;
+       }
+       
+       db.get(`SELECT COUNT(*) as total FROM results`, (err, count) => {
+           res.json({
+               data: results,
+               pagination: {
+                   page: page,
+                   limit: limit,
+                   total: count ? count.total : 0,
+                   pages: Math.ceil((count ? count.total : 0) / limit)
+               }
+           });
+       });
+   });
 });
 
 app.get('/api/stats', (req, res) => {
-    db.get(`SELECT 
-                COUNT(*) as total_rounds,
-                AVG(total) as avg_result,
-                (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as most_active_group
-            FROM results`, (err, stats) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        
-        db.get(`SELECT COUNT(*) as lightning_count FROM results WHERE multiplier > 10`, (err, lightning) => {
-            db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
-                const lightningPercent = total && total.total > 0 ? (lightning.lightning_count / total.total) * 100 : 0;
-                res.json({
-                    totalRounds: stats ? stats.total_rounds : 0,
-                    avgResult: stats ? stats.avg_result.toFixed(2) : 0,
-                    mostActiveGroup: stats ? stats.most_active_group : 'LOW',
-                    lightningBoost: Math.round(lightningPercent)
-                });
-            });
-        });
-    });
+   db.get(`SELECT 
+               COUNT(*) as total_rounds,
+               AVG(total) as avg_result,
+               (SELECT group_name FROM results GROUP BY group_name ORDER BY COUNT(*) DESC LIMIT 1) as most_active_group
+           FROM results`, (err, stats) => {
+       if (err) {
+           res.status(500).json({ error: err.message });
+           return;
+       }
+       
+       db.get(`SELECT COUNT(*) as lightning_count FROM results WHERE multiplier > 10`, (err, lightning) => {
+           db.get(`SELECT COUNT(*) as total FROM results`, (err, total) => {
+               const lightningPercent = total && total.total > 0 ? (lightning.lightning_count / total.total) * 100 : 0;
+               res.json({
+                   totalRounds: stats ? stats.total_rounds : 0,
+                   avgResult: stats ? stats.avg_result.toFixed(2) : 0,
+                   mostActiveGroup: stats ? stats.most_active_group : 'LOW',
+                   lightningBoost: Math.round(lightningPercent)
+               });
+           });
+       });
+   });
 });
 
 app.get('/api/ai-stats', (req, res) => {
-    db.get(`SELECT total_predictions, correct_predictions, accuracy FROM ai_stats ORDER BY id DESC LIMIT 1`, (err, stats) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(stats || { total_predictions: 0, correct_predictions: 0, accuracy: 0 });
-    });
+   db.get(`SELECT total_predictions, correct_predictions, accuracy FROM ai_stats ORDER BY id DESC LIMIT 1`, (err, stats) => {
+       if (err) {
+           res.status(500).json({ error: err.message });
+           return;
+       }
+       res.json(stats || { total_predictions: 0, correct_predictions: 0, accuracy: 0 });
+   });
 });
 
 app.get('/api/current-prediction', async (req, res) => {
-    const prediction = await getCurrentPredictionData();
-    res.json({
-        success: true,
-        prediction: prediction
-    });
+   const prediction = await getCurrentPredictionData();
+   res.json({
+       success: true,
+       prediction: prediction
+   });
 });
 
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        version: '7.0',
-        timestamp: new Date().toISOString(),
-        clients: clients.size,
-        uptime: process.uptime()
-    });
+   res.json({ 
+       status: 'OK', 
+       version: '7.0',
+       timestamp: new Date().toISOString(),
+       clients: clients.size,
+       uptime: process.uptime(),
+       aiReady: serverAI !== null
+   });
 });
 
 app.get('/api/diagnostic', async (req, res) => {
-    try {
-        const resultsCount = await new Promise((resolve) => {
-            db.get(`SELECT COUNT(*) as count FROM results`, (err, row) => {
-                resolve(row ? row.count : 0);
-            });
-        });
-        
-        const predictionsCount = await new Promise((resolve) => {
-            db.get(`SELECT COUNT(*) as count FROM predictions`, (err, row) => {
-                resolve(row ? row.count : 0);
-            });
-        });
-        
-        const lastResults = await new Promise((resolve) => {
-            db.all(`SELECT id, total, group_name, timestamp FROM results ORDER BY timestamp DESC LIMIT 10`, (err, rows) => {
-                resolve(rows || []);
-            });
-        });
-        
-        const last3Pattern = lastResults.slice(0, 3).map(r => r.group_name);
-        
-        res.json({
-            success: true,
-            version: '7.0',
-            database: {
-                path: dbPath,
-                exists: fs.existsSync(dbPath)
-            },
-            counts: {
-                results: resultsCount,
-                predictions: predictionsCount
-            },
-            last10Results: lastResults,
-            last3StepPattern: last3Pattern,
-            aiStatus: serverAI ? 'initialized' : 'waiting for new-ai-logic.js'
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+   try {
+       const resultsCount = await new Promise((resolve) => {
+           db.get(`SELECT COUNT(*) as count FROM results`, (err, row) => {
+               resolve(row ? row.count : 0);
+           });
+       });
+       
+       const predictionsCount = await new Promise((resolve) => {
+           db.get(`SELECT COUNT(*) as count FROM predictions`, (err, row) => {
+               resolve(row ? row.count : 0);
+           });
+       });
+       
+       const lastResults = await new Promise((resolve) => {
+           db.all(`SELECT id, total, group_name, timestamp FROM results ORDER BY timestamp DESC LIMIT 10`, (err, rows) => {
+               resolve(rows || []);
+           });
+       });
+       
+       const last3Pattern = lastResults.slice(0, 3).map(r => r.group_name);
+       const patternString = last3Pattern.length === 3 ? `${last3Pattern[0]}→${last3Pattern[1]}→${last3Pattern[2]}` : null;
+       const isPatternMatch = serverAI && patternString ? serverAI.isPatternMatch(patternString) : false;
+       
+       res.json({
+           success: true,
+           version: '7.0',
+           database: {
+               path: dbPath,
+               exists: fs.existsSync(dbPath)
+           },
+           counts: {
+               results: resultsCount,
+               predictions: predictionsCount
+           },
+           last10Results: lastResults,
+           last3StepPattern: last3Pattern,
+           patternMatch: isPatternMatch,
+           aiStatus: serverAI ? `initialized (${serverAI.version})` : 'not initialized',
+           aiAccuracy: serverAI ? serverAI.getAccuracy() : 0
+       });
+   } catch (error) {
+       res.status(500).json({ success: false, error: error.message });
+   }
 });
 
 // Start background data collection
@@ -881,30 +957,32 @@ setInterval(collectData, 3000);
 collectData();
 
 console.log('📊 Background data collection started (every 3 seconds)');
-console.log('🤖 Server waiting for new-ai-logic.js implementation');
+console.log('🤖 3-Step Pattern AI active - 6 patterns loaded');
 console.log('🔌 WebSocket server ready for real-time updates');
 console.log('🤖 Telegram notification active (triggers after 4 consecutive misses)');
-console.log('📈 New v7.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection');
+console.log('📈 v7.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | WAIT Mode');
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, closing server gracefully...');
-    server.close(() => {
-        console.log('Server closed');
-        db.close(() => {
-            console.log('Database connection closed');
-            process.exit(0);
-        });
-    });
+process.on('SIGTERM', async () => {
+   console.log('SIGTERM received, saving AI state and closing gracefully...');
+   await saveAIState();
+   server.close(() => {
+       console.log('Server closed');
+       db.close(() => {
+           console.log('Database connection closed');
+           process.exit(0);
+       });
+   });
 });
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received, closing server gracefully...');
-    server.close(() => {
-        console.log('Server closed');
-        db.close(() => {
-            console.log('Database connection closed');
-            process.exit(0);
-        });
-    });
+process.on('SIGINT', async () => {
+   console.log('SIGINT received, saving AI state and closing gracefully...');
+   await saveAIState();
+   server.close(() => {
+       console.log('Server closed');
+       db.close(() => {
+           console.log('Database connection closed');
+           process.exit(0);
+       });
+   });
 });
