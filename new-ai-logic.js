@@ -1,5 +1,5 @@
 // ============================================================
-// new-ai-logic.js (v7.0 - 3-Step Pattern AI with Retry Logic)
+// new-ai-logic.js (v9.0 - 3-Step Pattern AI with Real-Time Learning)
 // 
 // 6 Patterns for 3-Step Detection:
 // 1. LOW → HIGH → MEDIUM
@@ -11,15 +11,17 @@
 //
 // Rules:
 // - When pattern matches → Predict immediately using CONTINUE or SWITCH
-// - When prediction is WRONG → Keep predicting (same pattern, no WAIT)
-// - When prediction is CORRECT → Go back to WAIT mode, search for new pattern
-// - When pattern does NOT match → WAIT (no prediction)
+// - CONTINUE = Recent Data (last result of the 3)
+// - SWITCH = Previous Data (second result of the 3)
+// - When prediction is WRONG → Keep predicting with SAME rule (no auto-switch)
+// - When prediction is CORRECT → Go back to WAIT mode
+// - AI learns from history to choose better protection type over time
 // ============================================================
 
 class NewPatternAI {
     constructor() {
-        this.version = "8.0";
-        this.name = "3-Step Pattern AI with Retry";
+        this.version = "9.0";
+        this.name = "3-Step Pattern AI with Real-Time Learning";
         
         // Define the 6 patterns
         this.patterns = [
@@ -32,42 +34,56 @@ class NewPatternAI {
         ];
         
         // Define what each pattern predicts (CONTINUE vs SWITCH)
+        // CONTINUE = recent data (3rd result)
+        // SWITCH = previous data (2nd result)
         this.patternMapping = {
             // Pattern 1: LOW → HIGH → MEDIUM
             "LOW→HIGH→MEDIUM": {
-                continueGroup: "MEDIUM",
-                switchGroup: "HIGH",
-                description: "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে"
+                continueGroup: "MEDIUM",  // recent data (3rd)
+                switchGroup: "HIGH",      // previous data (2nd)
+                description: "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে",
+                recentData: "MEDIUM",
+                previousData: "HIGH"
             },
             // Pattern 2: HIGH → LOW → MEDIUM
             "HIGH→LOW→MEDIUM": {
                 continueGroup: "MEDIUM",
                 switchGroup: "LOW",
-                description: "HIGH থেকে LOW হয়ে MEDIUM এ এসেছে"
+                description: "HIGH থেকে LOW হয়ে MEDIUM এ এসেছে",
+                recentData: "MEDIUM",
+                previousData: "LOW"
             },
             // Pattern 3: MEDIUM → LOW → HIGH
             "MEDIUM→LOW→HIGH": {
                 continueGroup: "HIGH",
                 switchGroup: "LOW",
-                description: "MEDIUM থেকে LOW হয়ে HIGH এ এসেছে"
+                description: "MEDIUM থেকে LOW হয়ে HIGH এ এসেছে",
+                recentData: "HIGH",
+                previousData: "LOW"
             },
             // Pattern 4: MEDIUM → HIGH → LOW
             "MEDIUM→HIGH→LOW": {
                 continueGroup: "LOW",
                 switchGroup: "HIGH",
-                description: "MEDIUM থেকে HIGH হয়ে LOW এ এসেছে"
+                description: "MEDIUM থেকে HIGH হয়ে LOW এ এসেছে",
+                recentData: "LOW",
+                previousData: "HIGH"
             },
             // Pattern 5: LOW → MEDIUM → HIGH
             "LOW→MEDIUM→HIGH": {
                 continueGroup: "HIGH",
                 switchGroup: "MEDIUM",
-                description: "LOW থেকে MEDIUM হয়ে HIGH এ এসেছে"
+                description: "LOW থেকে MEDIUM হয়ে HIGH এ এসেছে",
+                recentData: "HIGH",
+                previousData: "MEDIUM"
             },
             // Pattern 6: HIGH → MEDIUM → LOW
             "HIGH→MEDIUM→LOW": {
                 continueGroup: "LOW",
                 switchGroup: "MEDIUM",
-                description: "HIGH থেকে MEDIUM হয়ে LOW এ এসেছে"
+                description: "HIGH থেকে MEDIUM হয়ে LOW এ এসেছে",
+                recentData: "LOW",
+                previousData: "MEDIUM"
             }
         };
         
@@ -78,14 +94,14 @@ class NewPatternAI {
         this.accuracy = 0;
         
         // Active pattern tracking (for retry logic)
-        this.activePattern = null;        // Currently active pattern that matched
-        this.activeProtectionType = null; // CONTINUE or SWITCH for this pattern
-        this.activeRecentData = null;     // Recent data (last result of the 3)
-        this.activePreviousData = null;   // Previous data (second result of the 3)
-        this.isWaitingForCorrect = false; // Are we waiting for the prediction to be correct?
-        this.consecutiveWrongCount = 0;   // How many times we were wrong consecutively
+        this.activePattern = null;        
+        this.activeProtectionType = null;
+        this.activeRecentData = null;
+        this.activePreviousData = null;
+        this.isWaitingForCorrect = false;
+        this.consecutiveWrongCount = 0;
         
-        // Recent pattern occurrences (for frequency analysis)
+        // Pattern-specific learning data
         this.patternOccurrences = {};
         
         // Initialize pattern occurrences counter
@@ -93,15 +109,18 @@ class NewPatternAI {
             this.patternOccurrences[pattern] = {
                 count: 0,
                 lastSeen: null,
+                continueCount: 0,
+                switchCount: 0,
+                continueCorrect: 0,
+                switchCorrect: 0,
                 continueAccuracy: 0,
-                switchAccuracy: 0,
-                correctCount: 0,
-                wrongCount: 0
+                switchAccuracy: 0
             };
         }
         
         console.log(`🤖 ${this.name} initialized with ${this.patterns.length} patterns`);
-        console.log(`📋 Rules: Pattern match = immediate prediction | Wrong = keep trying | Correct = reset to WAIT`);
+        console.log(`📋 Rules: CONTINUE = Recent Data | SWITCH = Previous Data`);
+        console.log(`📋 AI learns from history to choose better protection type over time`);
     }
     
     /**
@@ -115,6 +134,21 @@ class NewPatternAI {
     }
     
     /**
+     * Get recent and previous data from pattern
+     */
+    getPatternData(patternString) {
+        const parts = patternString.split('→');
+        if (parts.length !== 3) return null;
+        return {
+            first: parts[0],
+            second: parts[1],
+            third: parts[2],
+            recentData: parts[2],
+            previousData: parts[1]
+        };
+    }
+    
+    /**
      * Check if a pattern matches any of the 6 defined patterns
      */
     isPatternMatch(patternString) {
@@ -122,7 +156,9 @@ class NewPatternAI {
     }
     
     /**
-     * Get prediction for a matched pattern
+     * Get prediction for a matched pattern based on protection type
+     * CONTINUE = recentData (3rd result)
+     * SWITCH = previousData (2nd result)
      */
     getPredictionForPattern(patternString, protectionType) {
         const mapping = this.patternMapping[patternString];
@@ -136,16 +172,16 @@ class NewPatternAI {
         }
         
         let predictedGroup = null;
-        let confidence = 75; // Base confidence
+        let confidence = 70; // Base confidence
         
         if (protectionType === 'CONTINUE') {
-            predictedGroup = mapping.continueGroup;
+            predictedGroup = mapping.continueGroup; // recent data
             const histAccuracy = this.patternOccurrences[patternString]?.continueAccuracy || 50;
-            confidence = Math.min(95, Math.max(50, (confidence + histAccuracy) / 2));
+            confidence = Math.min(92, Math.max(45, (confidence + histAccuracy) / 2));
         } else if (protectionType === 'SWITCH') {
-            predictedGroup = mapping.switchGroup;
+            predictedGroup = mapping.switchGroup; // previous data
             const histAccuracy = this.patternOccurrences[patternString]?.switchAccuracy || 50;
-            confidence = Math.min(95, Math.max(50, (confidence + histAccuracy) / 2));
+            confidence = Math.min(92, Math.max(45, (confidence + histAccuracy) / 2));
         } else {
             return {
                 predictedGroup: null,
@@ -159,8 +195,38 @@ class NewPatternAI {
             confidence: Math.round(confidence),
             continueGroup: mapping.continueGroup,
             switchGroup: mapping.switchGroup,
+            recentData: mapping.recentData,
+            previousData: mapping.previousData,
             description: mapping.description
         };
+    }
+    
+    /**
+     * Decide which protection type to use based on historical learning
+     */
+    decideProtectionType(patternString) {
+        const occurrence = this.patternOccurrences[patternString];
+        
+        // Not enough data yet, use CONTINUE as default
+        if (!occurrence || occurrence.count < 3) {
+            console.log(`   Not enough data for pattern, using CONTINUE (default)`);
+            return { type: "CONTINUE", method: "default" };
+        }
+        
+        // Compare historical accuracy
+        const continueAccuracy = occurrence.continueAccuracy;
+        const switchAccuracy = occurrence.switchAccuracy;
+        
+        if (continueAccuracy > switchAccuracy) {
+            console.log(`   Historical data: CONTINUE (${continueAccuracy.toFixed(1)}%) > SWITCH (${switchAccuracy.toFixed(1)}%)`);
+            return { type: "CONTINUE", method: "historical" };
+        } else if (switchAccuracy > continueAccuracy) {
+            console.log(`   Historical data: SWITCH (${switchAccuracy.toFixed(1)}%) > CONTINUE (${continueAccuracy.toFixed(1)}%)`);
+            return { type: "SWITCH", method: "historical" };
+        } else {
+            console.log(`   Equal accuracy, using CONTINUE (default)`);
+            return { type: "CONTINUE", method: "default" };
+        }
     }
     
     /**
@@ -177,21 +243,16 @@ class NewPatternAI {
     }
     
     /**
-     * MAIN PREDICTION FUNCTION (UPDATED for v8.0)
-     * Rules:
-     * 1. If we have an active pattern and waiting for correct prediction → predict again (retry)
-     * 2. Else check last 3 results for pattern match
-     * 3. If pattern matches → predict immediately, activate pattern
-     * 4. If pattern does NOT match → WAIT
+     * MAIN PREDICTION FUNCTION
      */
     predict(last3Results, protectionType = null) {
-        // ============ CASE 1: We have an active pattern (waiting for correct prediction) ============
+        // CASE 1: Active pattern exists - retry with SAME rule
         if (this.isWaitingForCorrect && this.activePattern) {
-            console.log(`🔄 Active pattern exists. Retrying prediction (wrong count: ${this.consecutiveWrongCount})`);
+            console.log(`🔄 Active pattern exists. Retrying with SAME rule (wrong count: ${this.consecutiveWrongCount})`);
             console.log(`   Active Pattern: ${this.activePattern}`);
             console.log(`   Protection Type: ${this.activeProtectionType}`);
+            console.log(`   CONTINUE = Recent Data (${this.activeRecentData}) | SWITCH = Previous Data (${this.activePreviousData})`);
             
-            // Get prediction using the active pattern
             const prediction = this.getPredictionForPattern(this.activePattern, this.activeProtectionType);
             
             if (!prediction.predictedGroup) {
@@ -200,7 +261,6 @@ class NewPatternAI {
                 return this.predict(last3Results, protectionType);
             }
             
-            // Record this retry prediction
             this.recordPrediction({
                 pattern: this.activePattern,
                 protectionType: this.activeProtectionType,
@@ -213,10 +273,8 @@ class NewPatternAI {
             });
             
             console.log(`🔄 RETRY PREDICTION #${this.consecutiveWrongCount + 1}`);
-            console.log(`   Pattern: ${this.activePattern}`);
-            console.log(`   Protection: ${this.activeProtectionType}`);
-            console.log(`   Prediction: ${prediction.predictedGroup} (${prediction.confidence}% confidence)`);
-            console.log(`   ⚠️ Still waiting for CORRECT prediction...`);
+            console.log(`   Rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData}`);
+            console.log(`   Prediction: ${prediction.predictedGroup}`);
             
             return {
                 status: "PREDICTION_READY",
@@ -226,18 +284,18 @@ class NewPatternAI {
                 confidence: prediction.confidence,
                 continueGroup: prediction.continueGroup,
                 switchGroup: prediction.switchGroup,
+                recentData: this.activeRecentData,
+                previousData: this.activePreviousData,
                 description: prediction.description,
                 waitingForData: false,
                 isRetry: true,
                 retryCount: this.consecutiveWrongCount + 1,
-                message: `Retry #${this.consecutiveWrongCount + 1}: Pattern already matched, predicting again until correct.`,
+                message: `Retry #${this.consecutiveWrongCount + 1}: Using ${this.activeProtectionType} rule.`,
                 last3Results: last3Results
             };
         }
         
-        // ============ CASE 2: Need to check for new pattern ============
-        
-        // Validate input
+        // CASE 2: Need to check for new pattern
         if (!last3Results || last3Results.length !== 3) {
             console.log(`⚠️ Cannot predict: need exactly 3 results, got ${last3Results?.length || 0}`);
             return {
@@ -254,7 +312,6 @@ class NewPatternAI {
         const patternString = this.getPatternString(last3Results);
         console.log(`🔍 Checking pattern: ${patternString}`);
         
-        // Check if pattern matches
         if (!this.isPatternMatch(patternString)) {
             console.log(`❌ Pattern does NOT match any of the 6 patterns. Entering WAIT mode.`);
             return {
@@ -269,39 +326,29 @@ class NewPatternAI {
             };
         }
         
-        // ============ CASE 3: Pattern matched! Activate and predict immediately ============
-        console.log(`✅ Pattern MATCHED! Activating and predicting immediately.`);
+        // CASE 3: Pattern matched!
+        console.log(`✅ Pattern MATCHED!`);
         
-        // Extract recent and previous data from the pattern
-        const patternParts = patternString.split('→');
-        const recentData = patternParts[2];     // 3rd result (most recent)
-        const previousData = patternParts[1];   // 2nd result
+        const patternData = this.getPatternData(patternString);
+        const recentData = patternData.recentData;
+        const previousData = patternData.previousData;
         
-        // Decide protection type if not provided
+        console.log(`   Recent Data (3rd result): ${recentData}`);
+        console.log(`   Previous Data (2nd result): ${previousData}`);
+        console.log(`   Rule: CONTINUE = Recent Data (${recentData}) | SWITCH = Previous Data (${previousData})`);
+        
+        // Decide protection type
         let finalProtectionType = protectionType;
         let decisionMethod = "provided";
         
         if (!finalProtectionType) {
-            // Auto-decision based on historical accuracy
-            const occurrence = this.patternOccurrences[patternString];
-            if (occurrence && occurrence.count > 3) {
-                // Choose the more accurate protection type
-                if (occurrence.continueAccuracy > occurrence.switchAccuracy) {
-                    finalProtectionType = "CONTINUE";
-                } else if (occurrence.switchAccuracy > occurrence.continueAccuracy) {
-                    finalProtectionType = "SWITCH";
-                } else {
-                    finalProtectionType = "CONTINUE"; // Default
-                }
-                decisionMethod = "auto (based on historical accuracy)";
-            } else {
-                finalProtectionType = "CONTINUE"; // Default for new patterns
-                decisionMethod = "auto (default CONTINUE)";
-            }
-            console.log(`   Auto-decided protection: ${finalProtectionType}`);
+            const decision = this.decideProtectionType(patternString);
+            finalProtectionType = decision.type;
+            decisionMethod = decision.method;
         }
         
-        // Get prediction for the pattern
+        console.log(`   Selected Protection: ${finalProtectionType} (${decisionMethod})`);
+        
         const prediction = this.getPredictionForPattern(patternString, finalProtectionType);
         
         if (!prediction.predictedGroup) {
@@ -316,7 +363,7 @@ class NewPatternAI {
             };
         }
         
-        // ACTIVATE THE PATTERN - we will keep predicting until correct
+        // ACTIVATE THE PATTERN
         this.activePattern = patternString;
         this.activeProtectionType = finalProtectionType;
         this.activeRecentData = recentData;
@@ -324,7 +371,6 @@ class NewPatternAI {
         this.isWaitingForCorrect = true;
         this.consecutiveWrongCount = 0;
         
-        // Record this prediction
         this.recordPrediction({
             pattern: patternString,
             protectionType: finalProtectionType,
@@ -337,14 +383,11 @@ class NewPatternAI {
             previousData: previousData
         });
         
-        console.log(`🎯 NEW PATTERN ACTIVATED!`);
+        console.log(`🎯 PREDICTION READY`);
         console.log(`   Pattern: ${patternString}`);
-        console.log(`   Protection: ${finalProtectionType}`);
-        console.log(`   Recent Data: ${recentData}`);
-        console.log(`   Previous Data: ${previousData}`);
+        console.log(`   Rule: ${finalProtectionType} = ${finalProtectionType === 'CONTINUE' ? recentData : previousData}`);
         console.log(`   Prediction: ${prediction.predictedGroup} (${prediction.confidence}% confidence)`);
-        console.log(`   ${prediction.description}`);
-        console.log(`   📌 This pattern is now ACTIVE. Will keep predicting until CORRECT.`);
+        console.log(`   📌 Will keep predicting with SAME rule until CORRECT.`);
         
         return {
             status: "PREDICTION_READY",
@@ -354,23 +397,21 @@ class NewPatternAI {
             confidence: prediction.confidence,
             continueGroup: prediction.continueGroup,
             switchGroup: prediction.switchGroup,
+            recentData: recentData,
+            previousData: previousData,
             description: prediction.description,
             decisionMethod: decisionMethod,
             waitingForData: false,
             isActive: true,
-            recentData: recentData,
-            previousData: previousData,
-            message: `Pattern matched! Predicting ${prediction.predictedGroup}. Will retry if wrong.`,
+            message: `Pattern matched! Using ${finalProtectionType} rule. Will retry with SAME rule if wrong.`,
             last3Results: last3Results
         };
     }
     
     /**
-     * Update AI with actual result (for learning)
-     * CRITICAL: This determines if we reset the pattern or keep retrying
+     * Update AI with actual result
      */
     updateWithResult(actualGroup) {
-        // Find the most recent pending prediction
         const pendingIndex = this.patternHistory.findIndex(p => p.actualGroup === null);
         
         if (pendingIndex === -1) {
@@ -385,44 +426,51 @@ class NewPatternAI {
         prediction.actualGroup = actualGroup;
         prediction.isCorrect = (prediction.predictedGroup === actualGroup);
         
-        // Update accuracy statistics
+        // Update overall statistics
         this.totalPredictions++;
         if (prediction.isCorrect) {
             this.correctPredictions++;
         }
         this.accuracy = (this.correctPredictions / this.totalPredictions) * 100;
         
-        // Update pattern-specific accuracy
+        // Update pattern-specific learning data
         const occurrence = this.patternOccurrences[prediction.pattern];
         if (occurrence) {
             occurrence.count++;
             occurrence.lastSeen = new Date().toISOString();
             
-            if (prediction.isCorrect) {
-                occurrence.correctCount++;
-            } else {
-                occurrence.wrongCount++;
-            }
-            
             if (prediction.protectionType === "CONTINUE") {
-                const totalForType = occurrence.correctCount + occurrence.wrongCount;
-                occurrence.continueAccuracy = (occurrence.correctCount / totalForType) * 100;
+                occurrence.continueCount++;
+                if (prediction.isCorrect) {
+                    occurrence.continueCorrect++;
+                }
+                occurrence.continueAccuracy = (occurrence.continueCorrect / occurrence.continueCount) * 100;
             } else if (prediction.protectionType === "SWITCH") {
-                const totalForType = occurrence.correctCount + occurrence.wrongCount;
-                occurrence.switchAccuracy = (occurrence.correctCount / totalForType) * 100;
+                occurrence.switchCount++;
+                if (prediction.isCorrect) {
+                    occurrence.switchCorrect++;
+                }
+                occurrence.switchAccuracy = (occurrence.switchCorrect / occurrence.switchCount) * 100;
             }
         }
         
-        console.log(`📊 Updated AI with result: ${actualGroup}`);
-        console.log(`   Predicted: ${prediction.predictedGroup} → ${prediction.isCorrect ? '✓ CORRECT' : '✗ WRONG'}`);
-        console.log(`   Current accuracy: ${this.accuracy.toFixed(1)}%`);
+        console.log(`📊 LEARNING UPDATE:`);
+        console.log(`   Pattern: ${prediction.pattern}`);
+        console.log(`   Rule: ${prediction.protectionType}`);
+        console.log(`   Predicted: ${prediction.predictedGroup} → Actual: ${actualGroup}`);
+        console.log(`   Result: ${prediction.isCorrect ? '✓ CORRECT' : '✗ WRONG'}`);
         
-        // ============ CRITICAL LOGIC: Determine if we reset or keep retrying ============
+        // Update pattern-specific accuracy log
+        if (occurrence) {
+            console.log(`   Pattern Stats - CONTINUE: ${occurrence.continueAccuracy.toFixed(1)}% (${occurrence.continueCorrect}/${occurrence.continueCount}) | SWITCH: ${occurrence.switchAccuracy.toFixed(1)}% (${occurrence.switchCorrect}/${occurrence.switchCount})`);
+        }
         
+        console.log(`   Overall Accuracy: ${this.accuracy.toFixed(1)}% (${this.correctPredictions}/${this.totalPredictions})`);
+        
+        // Determine if we reset or keep retrying
         if (prediction.isCorrect) {
-            // CORRECT prediction! Reset everything and go back to WAIT mode
-            console.log(`✅ Prediction CORRECT! Resetting active pattern. Going back to WAIT mode.`);
-            console.log(`   Total wrong attempts for this pattern: ${this.consecutiveWrongCount}`);
+            console.log(`✅ CORRECT! Resetting pattern. Going back to WAIT mode.`);
+            console.log(`   Wrong attempts for this pattern: ${this.consecutiveWrongCount}`);
             this.resetActivePattern();
             
             return {
@@ -431,17 +479,13 @@ class NewPatternAI {
                 actualGroup: actualGroup,
                 newAccuracy: this.accuracy,
                 resetPattern: true,
-                message: "Correct prediction! Pattern reset. Now waiting for new pattern."
+                message: "Correct prediction! Pattern reset."
             };
         } else {
-            // WRONG prediction! Keep the active pattern, increment wrong count
             this.consecutiveWrongCount++;
-            console.log(`❌ Prediction WRONG! Keeping active pattern. Wrong count: ${this.consecutiveWrongCount}`);
-            console.log(`   Will retry prediction with same pattern next round.`);
-            console.log(`   Active Pattern: ${this.activePattern}`);
-            console.log(`   Protection Type: ${this.activeProtectionType}`);
+            console.log(`❌ WRONG! Keeping SAME rule. Wrong count: ${this.consecutiveWrongCount}`);
+            console.log(`   Will retry with SAME rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData}`);
             
-            // isWaitingForCorrect remains TRUE, active pattern remains
             return {
                 isCorrect: false,
                 predictedGroup: prediction.predictedGroup,
@@ -449,7 +493,7 @@ class NewPatternAI {
                 newAccuracy: this.accuracy,
                 keepPattern: true,
                 consecutiveWrongCount: this.consecutiveWrongCount,
-                message: `Wrong prediction! Retrying with same pattern. Attempt #${this.consecutiveWrongCount + 1}`,
+                message: `Wrong prediction! Retrying with SAME ${this.activeProtectionType} rule. Attempt #${this.consecutiveWrongCount + 1}`,
                 activePattern: this.activePattern,
                 activeProtectionType: this.activeProtectionType
             };
@@ -457,7 +501,7 @@ class NewPatternAI {
     }
     
     /**
-     * Check if AI is currently in active prediction mode (waiting for correct)
+     * Check if AI is currently in active prediction mode
      */
     isActive() {
         return this.isWaitingForCorrect && this.activePattern !== null;
@@ -480,8 +524,9 @@ class NewPatternAI {
             protectionType: this.activeProtectionType,
             recentData: this.activeRecentData,
             previousData: this.activePreviousData,
+            ruleDescription: `${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData}`,
             consecutiveWrongCount: this.consecutiveWrongCount,
-            message: `Active pattern: ${this.activePattern} using ${this.activeProtectionType}. Wrong attempts: ${this.consecutiveWrongCount}`
+            message: `Active: ${this.activePattern} | Rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData} | Wrong attempts: ${this.consecutiveWrongCount}`
         };
     }
     
@@ -494,28 +539,31 @@ class NewPatternAI {
             id: Date.now()
         });
         
-        // Keep only last 1000 predictions
         if (this.patternHistory.length > 1000) {
             this.patternHistory.pop();
         }
     }
     
     /**
-     * Get pattern statistics
+     * Get pattern statistics with learning data
      */
     getPatternStats() {
         const stats = {};
         
         for (const pattern of this.patterns) {
             const occ = this.patternOccurrences[pattern];
+            const mapping = this.patternMapping[pattern];
             stats[pattern] = {
                 occurrences: occ.count,
                 lastSeen: occ.lastSeen,
                 continueAccuracy: Math.round(occ.continueAccuracy),
                 switchAccuracy: Math.round(occ.switchAccuracy),
-                correctCount: occ.correctCount || 0,
-                wrongCount: occ.wrongCount || 0,
-                mapping: this.patternMapping[pattern]
+                continueStats: `${occ.continueCorrect}/${occ.continueCount}`,
+                switchStats: `${occ.switchCorrect}/${occ.switchCount}`,
+                recommendedProtection: occ.continueAccuracy > occ.switchAccuracy ? "CONTINUE" : (occ.switchAccuracy > occ.continueAccuracy ? "SWITCH" : "CONTINUE (default)"),
+                recentData: mapping.recentData,
+                previousData: mapping.previousData,
+                description: mapping.description
             };
         }
         
@@ -558,7 +606,6 @@ class NewPatternAI {
             accuracy: this.accuracy,
             patternOccurrences: this.patternOccurrences,
             patternHistory: this.patternHistory.slice(0, 100),
-            // Save active pattern state
             activePattern: this.activePattern,
             activeProtectionType: this.activeProtectionType,
             activeRecentData: this.activeRecentData,
@@ -587,7 +634,6 @@ class NewPatternAI {
             this.patternHistory = state.patternHistory;
         }
         
-        // Load active pattern state
         if (state.activePattern) {
             this.activePattern = state.activePattern;
             this.activeProtectionType = state.activeProtectionType;
@@ -605,10 +651,10 @@ class NewPatternAI {
     }
     
     /**
-     * Force reset (manual override)
+     * Force reset
      */
     forceReset() {
-        console.log(`🔧 Manual force reset triggered. Resetting all active patterns.`);
+        console.log(`🔧 Manual force reset triggered.`);
         this.resetActivePattern();
         return {
             success: true,
@@ -638,7 +684,7 @@ class NewPatternAI {
     }
     
     /**
-     * Manual decision: Force CONTINUE or SWITCH for next prediction
+     * Set protection type for current active pattern
      */
     setNextProtectionType(protectionType) {
         if (!this.getProtectionTypes().includes(protectionType)) {
@@ -654,11 +700,27 @@ class NewPatternAI {
         console.log(`🔧 Protection type set to: ${protectionType}`);
         return true;
     }
+    
+    /**
+     * Get rule description for a pattern
+     */
+    getRuleDescription(patternString) {
+        const mapping = this.patternMapping[patternString];
+        if (!mapping) return null;
+        
+        return {
+            pattern: patternString,
+            continueRule: `CONTINUE = Recent Data (${mapping.recentData})`,
+            switchRule: `SWITCH = Previous Data (${mapping.previousData})`,
+            description: mapping.description
+        };
+    }
 }
 
 // ============================================================
-// Helper function to create pattern from results
+// Helper functions
 // ============================================================
+
 function createPatternFromResults(results) {
     if (!results || results.length < 3) {
         return null;
@@ -667,9 +729,6 @@ function createPatternFromResults(results) {
     return `${last3[0]}→${last3[1]}→${last3[2]}`;
 }
 
-// ============================================================
-// Helper function to check if pattern is valid
-// ============================================================
 function isValidPattern(patternString) {
     const validPatterns = [
         "LOW→HIGH→MEDIUM",
