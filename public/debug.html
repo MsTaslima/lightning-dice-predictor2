@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lightning Dice - 3-Step Pattern AI Debug Dashboard v7.0</title>
+    <title>Lightning Dice - Dynamic 3-Step Pattern AI Debug Dashboard v8.0</title>
     <style>
         * {
             margin: 0;
@@ -137,7 +137,7 @@
         .stat-card h4 { font-size: 13px; opacity: 0.7; margin-bottom: 10px; letter-spacing: 1px; }
         .stat-value { font-size: 32px; font-weight: 800; background: linear-gradient(135deg, #fff, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
-        /* NEW: 3-Step Pattern Card */
+        /* Dynamic Pattern Card */
         .pattern-card-main {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(30, 27, 75, 0.6));
             backdrop-filter: blur(10px);
@@ -202,6 +202,64 @@
             font-size: 14px;
         }
 
+        .pattern-active {
+            background: rgba(16, 185, 129, 0.3);
+            color: #4ade80;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Dynamic Values Row - NEW */
+        .dynamic-values-row {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 16px;
+            padding: 15px 20px;
+            margin: 15px 0;
+            text-align: center;
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .dynamic-values-row.active {
+            border-color: #4ade80;
+            box-shadow: 0 0 15px rgba(74, 222, 128, 0.2);
+        }
+
+        .dynamic-value-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 20px;
+            margin: 0 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 40px;
+        }
+
+        .dynamic-label {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .dynamic-value {
+            font-size: 24px;
+            font-weight: 800;
+        }
+
+        .dynamic-value.continue { color: #4ade80; }
+        .dynamic-value.switch { color: #fbbf24; }
+
+        .update-animation {
+            animation: valueUpdate 0.5s ease;
+        }
+
+        @keyframes valueUpdate {
+            0% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
         /* Patterns Grid */
         .patterns-grid {
             display: grid;
@@ -215,6 +273,12 @@
             border-radius: 12px;
             padding: 12px 15px;
             border-left: 3px solid #fbbf24;
+            transition: all 0.3s ease;
+        }
+
+        .pattern-ref-card:hover {
+            transform: translateX(5px);
+            border-left-color: #4ade80;
         }
 
         .pattern-ref-text {
@@ -262,6 +326,15 @@
             color: #f59e0b;
         }
 
+        .retry-badge {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            margin-left: 8px;
+        }
+
         .console-log {
             background: rgba(0,0,0,0.5);
             backdrop-filter: blur(5px);
@@ -304,11 +377,14 @@
 
         @media (max-width: 1000px) {
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .dynamic-value-item { padding: 5px 12px; margin: 5px; }
+            .dynamic-value { font-size: 18px; }
         }
         
         @media (max-width: 600px) {
             .stats-grid { grid-template-columns: 1fr; }
             body { padding: 10px; }
+            .dynamic-values-row { padding: 10px; }
         }
 
         .loading-spinner {
@@ -326,8 +402,8 @@
 <body>
 <div class="container">
     <div class="header">
-        <h1>⚡ Lightning Dice - 3-Step Pattern AI Debug Dashboard v7.0</h1>
-        <p>ছয়টি 3-স্টেপ প্যাটার্ন | CONTINUE/SWITCH প্রোটেকশন | WAIT মোড</p>
+        <h1>⚡ Lightning Dice - Dynamic 3-Step Pattern AI Debug Dashboard v8.0</h1>
+        <p>ছয়টি প্যাটার্ন (ট্রিগার) | ডাইনামিক CONTINUE/SWITCH | রিয়েল-টাইম ভ্যালু আপডেট</p>
     </div>
 
     <div class="control-bar">
@@ -342,6 +418,7 @@
         <div><span class="ws-status" id="wsStatusDot"></span><span id="wsStatusText">Connecting...</span><span class="live-badge" id="liveBadge">LIVE</span></div>
         <div>🕐 শেষ আপডেট: <span id="lastUpdateTime" style="color:#fbbf24; font-weight:600;">--:--:--</span></div>
         <div>📡 অটো রিফ্রেশ: <span id="autoRefreshStatus" style="color:#10b981;">WebSocket Active</span></div>
+        <div>🔄 রিট্রাই: <span id="retryCountDisplay" style="color:#fbbf24;">0</span></div>
     </div>
 
     <div class="stats-grid">
@@ -351,9 +428,9 @@
         <div class="stat-card"><h4>🟢 সার্ভার স্ট্যাটাস</h4><div class="stat-value" id="serverStatus">🟢 Online</div></div>
     </div>
 
-    <!-- NEW: 3-Step Pattern AI Main Card -->
+    <!-- Dynamic 3-Step Pattern AI Main Card -->
     <div class="pattern-card-main">
-        <div class="card-header">🎯 3-STEP PATTERN AI DASHBOARD</div>
+        <div class="card-header">🎯 DYNAMIC 3-STEP PATTERN AI DASHBOARD (v8.0)</div>
         <div class="card-body">
             <div class="pattern-info">
                 <div class="pattern-info-item">
@@ -370,10 +447,26 @@
                 </div>
             </div>
 
+            <!-- Dynamic Values Display (NEW for v8.0) -->
+            <div class="dynamic-values-row" id="dynamicValuesRow" style="display: none;">
+                <div style="margin-bottom: 10px; font-size: 12px; opacity: 0.7;">🔄 ডাইনামিক ভ্যালু (প্রতি রেজাল্টের পর আপডেট)</div>
+                <div>
+                    <span class="dynamic-value-item">
+                        <span class="dynamic-label">🟢 CONTINUE =</span>
+                        <span class="dynamic-value continue" id="continueDisplayValue">--</span>
+                    </span>
+                    <span class="dynamic-value-item">
+                        <span class="dynamic-label">🟡 SWITCH =</span>
+                        <span class="dynamic-value switch" id="switchDisplayValue">--</span>
+                    </span>
+                </div>
+                <div style="font-size: 10px; opacity: 0.5; margin-top: 10px;">⚠️ ভুল প্রেডিকশনের পর নতুন রেজাল্ট দিয়ে ভ্যালু আপডেট হয়</div>
+            </div>
+
             <div style="background: rgba(0,0,0,0.3); border-radius: 16px; padding: 15px; margin-bottom: 20px;">
                 <table style="width: 100%; font-size: 14px;">
                     <tr>
-                        <td style="padding: 8px;"><strong>📌 প্যাটার্ন:</strong></td>
+                        <td style="padding: 8px;"><strong>📌 প্যাটার্ন (ট্রিগার):</strong></td>
                         <td style="padding: 8px;" id="debugPattern">--</td>
                     </tr>
                     <tr>
@@ -383,6 +476,10 @@
                     <tr>
                         <td style="padding: 8px;"><strong>📊 কনফিডেন্স:</strong></td>
                         <td style="padding: 8px;" id="debugConfidence">--%</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;"><strong>🔄 রিট্রাই নম্বর:</strong></td>
+                        <td style="padding: 8px;" id="debugRetryCount">0</td>
                     </tr>
                     <tr>
                         <td style="padding: 8px;"><strong>📝 বিবরণ:</strong></td>
@@ -399,16 +496,20 @@
         </div>
     </div>
 
-    <!-- Available Patterns Reference -->
+    <!-- Available Patterns Reference (UPDATED for v8.0) -->
     <div class="pattern-card-main" style="margin-bottom: 25px;">
-        <div class="card-header">📚 উপলব্ধ 3-স্টেপ প্যাটার্নসমূহ (৬টি)</div>
+        <div class="card-header">📚 উপলব্ধ 3-স্টেপ প্যাটার্নসমূহ (৬টি - ট্রিগার ONLY)</div>
         <div class="card-body">
             <div class="patterns-grid" id="patternsGrid">
                 <!-- Will be populated by JavaScript -->
             </div>
-            <div style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 10px; font-size: 12px; text-align: center;">
-                💡 <strong>নিয়ম:</strong> প্যাটার্ন ম্যাচ করলে → <span style="color:#10b981;">CONTINUE</span> (রিসেন্ট রেজাল্ট) অথবা <span style="color:#f59e0b;">SWITCH</span> (আগের রেজাল্ট) দিয়ে প্রেডিকশন।<br>
-                ⏳ প্যাটার্ন না মেললে → <strong style="color:#fbbf24;">WAIT মোড</strong> - পরবর্তী রেজাল্টের অপেক্ষা করে।
+            <div style="margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 10px; font-size: 12px; text-align: center;">
+                <strong>💡 v8.0 ডাইনামিক সিস্টেমের নিয়ম:</strong><br>
+                🔹 <span style="color:#fbbf24;">প্যাটার্ন শনাক্ত</span> → প্রেডিকশন মোড <strong style="color:#4ade80;">ACTIVATE</strong><br>
+                🔹 <span style="color:#4ade80;">CONTINUE</span> = শেষ রেজাল্ট | <span style="color:#fbbf24;">SWITCH</span> = আগের রেজাল্ট (ডাইনামিক)<br>
+                🔹 <span style="color:#ef4444;">ভুল হলে</span> → নতুন রেজাল্ট দিয়ে ভ্যালু আপডেট, একই নিয়মে রিট্রাই<br>
+                🔹 <span style="color:#10b981;">সঠিক হলে</span> → WAIT মোডে ফিরে যায়<br>
+                ⏳ <strong style="color:#fbbf24;">WAIT মোড</strong> - প্যাটার্ন শনাক্তের অপেক্ষায়
             </div>
         </div>
     </div>
@@ -420,7 +521,7 @@
             <button class="clear-console" id="clearConsoleBtn2">Clear</button>
         </div>
         <div class="console-content" id="consoleContent">
-            <div class="console-line info">🔍 ড্যাশবোর্ড লোড হয়েছে (v7.0 - 3-Step Pattern AI)। WebSocket সংযোগ হচ্ছে...</div>
+            <div class="console-line info">🔍 ড্যাশবোর্ড লোড হয়েছে (v8.0 - Dynamic 3-Step Pattern AI)। WebSocket সংযোগ হচ্ছে...</div>
         </div>
     </div>
 </div>
@@ -428,8 +529,9 @@
 <script>
     const API_BASE = '/api';
     let ws = null;
+    let lastDynamicValues = { continue: null, switch: null };
 
-    // Valid patterns for v7.0
+    // Valid patterns for v8.0 (TRIGGER only)
     const VALID_PATTERNS = [
         "LOW→HIGH→MEDIUM",
         "HIGH→LOW→MEDIUM",
@@ -440,12 +542,12 @@
     ];
 
     const PATTERN_MAPPING = {
-        "LOW→HIGH→MEDIUM": { continue: "MEDIUM", switch: "HIGH", desc: "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে" },
-        "HIGH→LOW→MEDIUM": { continue: "MEDIUM", switch: "LOW", desc: "HIGH থেকে LOW হয়ে MEDIUM এ এসেছে" },
-        "MEDIUM→LOW→HIGH": { continue: "HIGH", switch: "LOW", desc: "MEDIUM থেকে LOW হয়ে HIGH এ এসেছে" },
-        "MEDIUM→HIGH→LOW": { continue: "LOW", switch: "HIGH", desc: "MEDIUM থেকে HIGH হয়ে LOW এ এসেছে" },
-        "LOW→MEDIUM→HIGH": { continue: "HIGH", switch: "MEDIUM", desc: "LOW থেকে MEDIUM হয়ে HIGH এ এসেছে" },
-        "HIGH→MEDIUM→LOW": { continue: "LOW", switch: "MEDIUM", desc: "HIGH থেকে MEDIUM হয়ে LOW এ এসেছে" }
+        "LOW→HIGH→MEDIUM": { desc: "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে (ট্রিগার)" },
+        "HIGH→LOW→MEDIUM": { desc: "HIGH থেকে LOW হয়ে MEDIUM এ এসেছে (ট্রিগার)" },
+        "MEDIUM→LOW→HIGH": { desc: "MEDIUM থেকে LOW হয়ে HIGH এ এসেছে (ট্রিগার)" },
+        "MEDIUM→HIGH→LOW": { desc: "MEDIUM থেকে HIGH হয়ে LOW এ এসেছে (ট্রিগার)" },
+        "LOW→MEDIUM→HIGH": { desc: "LOW থেকে MEDIUM হয়ে HIGH এ এসেছে (ট্রিগার)" },
+        "HIGH→MEDIUM→LOW": { desc: "HIGH থেকে MEDIUM হয়ে LOW এ এসেছে (ট্রিগার)" }
     };
 
     function addLog(msg, type='info') {
@@ -468,7 +570,7 @@
             return `
                 <div class="pattern-ref-card">
                     <div class="pattern-ref-text">📐 ${pattern}</div>
-                    <div class="pattern-ref-actions">🔄 CONTINUE: ${mapping.continue} | 🔀 SWITCH: ${mapping.switch}</div>
+                    <div class="pattern-ref-actions">🎯 ট্রিগার প্যাটার্ন - প্রেডিকশন মোড সক্রিয় করে</div>
                     <div class="pattern-ref-actions" style="font-size:10px;">📝 ${mapping.desc}</div>
                 </div>
             `;
@@ -479,6 +581,39 @@
         if (!last3 || last3.length !== 3) return false;
         const patternString = `${last3[0]}→${last3[1]}→${last3[2]}`;
         return VALID_PATTERNS.includes(patternString);
+    }
+
+    function animateValueUpdate(elementId, newValue) {
+        const element = document.getElementById(elementId);
+        if (element && element.textContent !== newValue) {
+            element.classList.add('update-animation');
+            setTimeout(() => element.classList.remove('update-animation'), 500);
+        }
+    }
+
+    function updateDynamicValuesDisplay(continueVal, switchVal, isActive) {
+        const dynamicRow = document.getElementById('dynamicValuesRow');
+        const continueDisplay = document.getElementById('continueDisplayValue');
+        const switchDisplay = document.getElementById('switchDisplayValue');
+        
+        if (isActive && continueVal && switchVal) {
+            if (dynamicRow) dynamicRow.style.display = 'block';
+            if (continueDisplay) {
+                if (lastDynamicValues.continue !== continueVal) {
+                    animateValueUpdate('continueDisplayValue', continueVal);
+                }
+                continueDisplay.textContent = continueVal;
+            }
+            if (switchDisplay) {
+                if (lastDynamicValues.switch !== switchVal) {
+                    animateValueUpdate('switchDisplayValue', switchVal);
+                }
+                switchDisplay.textContent = switchVal;
+            }
+            lastDynamicValues = { continue: continueVal, switch: switchVal };
+        } else {
+            if (dynamicRow) dynamicRow.style.display = 'none';
+        }
     }
 
     async function fetchAndUpdate() {
@@ -497,6 +632,14 @@
                 document.getElementById('debugConfidence').innerHTML = `${p.confidence || p.ensembleConfidence || 0}%`;
                 document.getElementById('debugDescription').innerHTML = p.description || '--';
                 document.getElementById('protectionTypeDebug').innerHTML = p.protectionType || '--';
+                document.getElementById('debugRetryCount').innerHTML = p.retryCount || p.consecutiveWrongCount || 0;
+                document.getElementById('retryCountDisplay').innerHTML = p.retryCount || p.consecutiveWrongCount || 0;
+                
+                // Update dynamic values display
+                const isPredictionActive = p.isPredictionModeActive || (p.status === 'PREDICTION_READY' && !p.waitingForData);
+                const continueVal = p.dynamicContinueValue || p.continueGroup || p.recentData;
+                const switchVal = p.dynamicSwitchValue || p.switchGroup || p.previousData;
+                updateDynamicValuesDisplay(continueVal, switchVal, isPredictionActive);
                 
                 // Update prediction display
                 const predictedGroup = p.predictedGroup || p.ensemble || 'WAITING';
@@ -504,11 +647,15 @@
                 document.getElementById('fallbackPrediction').innerHTML = `${getGroupIcon(predictedGroup)} ${predictedGroup}`;
                 
                 if (p.waitingForData || p.status === 'WAITING') {
-                    document.getElementById('fallbackReason').innerHTML = `⏳ WAIT MODE: Pattern not recognized. Waiting for next result.`;
-                    document.getElementById('patternStatus').innerHTML = '<span class="pattern-wait">⏳ WAIT MODE - Pattern not recognized</span>';
+                    document.getElementById('fallbackReason').innerHTML = `⏳ WAIT MODE: কোনো বৈধ প্যাটার্ন শনাক্ত হয়নি। পরবর্তী রেজাল্টের অপেক্ষায়...`;
+                    document.getElementById('patternStatus').innerHTML = '<span class="pattern-wait">⏳ WAIT MODE - প্যাটার্ন শনাক্ত হয়নি</span>';
+                } else if (isPredictionActive) {
+                    const retryText = (p.retryCount > 0) ? ` (রিট্রাই #${p.retryCount})` : '';
+                    document.getElementById('fallbackReason').innerHTML = `✅ প্রেডিকশন মোড সক্রিয়! ${p.protectionType || 'CONTINUE'} নিয়ম ব্যবহার করছে। প্রেডিকশন: ${predictedGroup} (${confidence}% কনফিডেন্স)${retryText}<br>🔄 ডাইনামিক ভ্যালু: CONTINUE = ${continueVal || '?'} | SWITCH = ${switchVal || '?'}`;
+                    document.getElementById('patternStatus').innerHTML = '<span class="pattern-active">🎯 প্রেডিকশন মোড ACTIVE - ডাইনামিক ভ্যালু আপডেট হচ্ছে</span>';
                 } else {
-                    document.getElementById('fallbackReason').innerHTML = `✅ Pattern matched! Using ${p.protectionType || 'CONTINUE'} protection. Prediction: ${predictedGroup} with ${confidence}% confidence.`;
-                    document.getElementById('patternStatus').innerHTML = '<span class="pattern-match">✅ PATTERN MATCHED - Ready to predict</span>';
+                    document.getElementById('fallbackReason').innerHTML = `✅ প্যাটার্ন ম্যাচ করেছে! ${p.protectionType || 'CONTINUE'} প্রোটেকশন ব্যবহার করছে। প্রেডিকশন: ${predictedGroup} (${confidence}% কনফিডেন্স)`;
+                    document.getElementById('patternStatus').innerHTML = '<span class="pattern-match">✅ প্যাটার্ন ম্যাচ করেছে - প্রেডিকশন মোড সক্রিয়</span>';
                 }
             }
             
@@ -521,14 +668,9 @@
                 const last3 = results.slice(0, 3).map(r => r.group_name);
                 const patternString = `${last3[0]} → ${last3[1]} → ${last3[2]}`;
                 document.getElementById('last3Results').innerHTML = `<strong>${patternString}</strong>`;
-                
-                const isMatch = checkPatternMatch(last3);
-                if (!isMatch && document.getElementById('patternStatus').innerHTML.includes('WAIT') === false) {
-                    document.getElementById('patternStatus').innerHTML = '<span class="pattern-wait">⏳ WAIT MODE - Pattern not recognized</span>';
-                }
             } else if (results) {
                 const needed = 3 - results.length;
-                document.getElementById('last3Results').innerHTML = `<strong>-- → -- → --</strong> <span style="color:#fbbf24;">(Need ${needed} more results)</span>`;
+                document.getElementById('last3Results').innerHTML = `<strong>-- → -- → --</strong> <span style="color:#fbbf24;">(আরও ${needed}টি রেজাল্ট প্রয়োজন)</span>`;
             }
             
             // Fetch stats
@@ -561,19 +703,25 @@
     }
 
     async function runAllTests() {
-        addLog('🚀 সম্পূর্ণ সিস্টেম ডায়াগনস্টিক শুরু (v7.0)...', 'info');
+        addLog('🚀 সম্পূর্ণ সিস্টেম ডায়াগনস্টিক শুরু (v8.0)...', 'info');
         addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        addLog('📋 6টি 3-স্টেপ প্যাটার্ন সক্রিয়:', 'info');
+        addLog('📋 6টি 3-স্টেপ প্যাটার্ন (ট্রিগার):', 'info');
         VALID_PATTERNS.forEach(p => addLog(`   📐 ${p}`, 'info'));
+        addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        addLog('🎯 v8.0 ডাইনামিক সিস্টেম:', 'info');
+        addLog('   🔹 প্যাটার্ন → প্রেডিকশন মোড ট্রিগার', 'info');
+        addLog('   🔹 CONTINUE = শেষ রেজাল্ট (ডাইনামিক)', 'info');
+        addLog('   🔹 SWITCH = আগের রেজাল্ট (ডাইনামিক)', 'info');
+        addLog('   🔹 ভুল হলে ভ্যালু আপডেট + রিট্রাই', 'info');
         addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
         await fetchAndUpdate();
         addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        addLog('✅ ডায়াগনস্টিক সম্পূর্ণ! 3-Step Pattern AI সচল আছে।', 'success');
+        addLog('✅ ডায়াগনস্টিক সম্পূর্ণ! Dynamic 3-Step Pattern AI সচল আছে।', 'success');
     }
 
-    function testPrediction() { addLog('🎯 লাইভ প্রেডিকশন টেস্ট করা হচ্ছে (3-Step Pattern)...', 'info'); fetchAndUpdate(); }
+    function testPrediction() { addLog('🎯 লাইভ প্রেডিকশন টেস্ট করা হচ্ছে (Dynamic 3-Step Pattern)...', 'info'); fetchAndUpdate(); }
     function forceRefresh() { addLog('🔄 সব ডাটা রিফ্রেশ করা হচ্ছে...', 'info'); fetchAndUpdate(); addLog('✅ ডাটা রিফ্রেশ সম্পূর্ণ', 'success'); }
-    function clearConsole() { document.getElementById('consoleContent').innerHTML = '<div class="console-line info">কনসোল ক্লিয়ার করা হয়েছে। রিয়েল-টাইম আপডেট সক্রিয় (v7.0)...</div>'; }
+    function clearConsole() { document.getElementById('consoleContent').innerHTML = '<div class="console-line info">কনসোল ক্লিয়ার করা হয়েছে। রিয়েল-টাইম আপডেট সক্রিয় (v8.0)...</div>'; }
 
     function setupWebSocket() {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -582,14 +730,14 @@
         ws.onopen = () => {
             document.getElementById('wsStatusDot').className = 'ws-status ws-connected';
             document.getElementById('wsStatusText').innerHTML = 'Connected';
-            addLog('🔌 WebSocket সংযুক্ত - 3-Step Pattern AI রিয়েল-টাইম আপডেট সক্রিয়', 'success');
+            addLog('🔌 WebSocket সংযুক্ত - Dynamic 3-Step Pattern AI রিয়েল-টাইম আপডেট সক্রিয়', 'success');
         };
         
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
                 if(data.type === 'new_result') {
-                    addLog('🔄 রিয়েল-টাইম আপডেট: নতুন রেজাল্ট পেয়েছি, 3-Step প্যাটার্ন চেক করা হচ্ছে...', 'info');
+                    addLog('🔄 রিয়েল-টাইম আপডেট: নতুন রেজাল্ট পেয়েছি, ডাইনামিক ভ্যালু চেক করা হচ্ছে...', 'info');
                     fetchAndUpdate();
                 }
             } catch(e) {}
