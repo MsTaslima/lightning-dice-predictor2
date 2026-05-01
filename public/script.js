@@ -1,7 +1,7 @@
 // ============================================================
-// COMPLETE script.js (UPDATED FOR v7.0 - 3-Step Pattern AI)
-// Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | WAIT Mode
-// FIXED: Only shows valid predictions in history table (WAITING mode filtered out)
+// COMPLETE script.js (UPDATED FOR v8.0 - Dynamic CONTINUE/SWITCH)
+// Features: 3-Step Pattern Detection (TRIGGER) | DYNAMIC CONTINUE/SWITCH | WAIT Mode
+// FIXED: Shows dynamic CONTINUE/SWITCH values when in prediction mode
 // ============================================================
 
 class LightningDiceApp {
@@ -15,7 +15,7 @@ class LightningDiceApp {
         this.itemsPerPage = 10;
         this.isInitialized = false;
         
-        // Available 3-Step Patterns
+        // Available 3-Step Patterns (ONLY for trigger detection)
         this.validPatterns = [
             "LOW→HIGH→MEDIUM",
             "HIGH→LOW→MEDIUM",
@@ -35,7 +35,7 @@ class LightningDiceApp {
     }
     
     async init() {
-        console.log('🚀 Initializing 3-Step Pattern AI System v7.0...');
+        console.log('🚀 Initializing Dynamic 3-Step Pattern AI System v8.0...');
         this.bindEvents();
         
         await this.loadInitialData();
@@ -57,7 +57,7 @@ class LightningDiceApp {
                 return new Date(b.timestamp) - new Date(a.timestamp);
             });
             
-            // FIXED: Filter out WAITING predictions from history
+            // Filter out WAITING predictions from history
             this.predictionHistory = (data.predictions || []).filter(p => {
                 return p.predictedGroup && 
                        p.predictedGroup !== 'WAITING' && 
@@ -67,11 +67,16 @@ class LightningDiceApp {
             });
             this.currentPrediction = data.currentPrediction || null;
             
+            // Store dynamic values if available
+            if (data.aiDynamicValues) {
+                this.dynamicValues = data.aiDynamicValues;
+            }
+            
             // Log pattern info
             if (this.allResults.length >= 3) {
                 const last3 = this.allResults.slice(0, 3).map(r => r.group);
                 console.log(`📊 Last 3 results: ${last3.join(' → ')}`);
-                console.log(`📊 Pattern check: ${this.checkPatternMatch(last3) ? 'MATCH' : 'NO MATCH (WAIT MODE)'}`);
+                console.log(`📊 Pattern check: ${this.checkPatternMatch(last3) ? 'MATCH (TRIGGER)' : 'NO MATCH (WAIT MODE)'}`);
             }
             
             console.log(`✅ Filtered prediction history: ${this.predictionHistory.length} valid predictions (WAITING removed)`);
@@ -111,7 +116,7 @@ class LightningDiceApp {
             const isMatch = this.checkPatternMatch(last3);
             if (patternStatusEl) {
                 if (isMatch) {
-                    patternStatusEl.innerHTML = '<span class="status-match">✅ PATTERN MATCHED - Ready to predict</span>';
+                    patternStatusEl.innerHTML = '<span class="status-match">✅ PATTERN MATCHED - Prediction mode ACTIVE</span>';
                 } else {
                     patternStatusEl.innerHTML = '<span class="status-wait">⏳ WAIT MODE - Pattern not recognized, waiting for next result</span>';
                 }
@@ -203,7 +208,7 @@ class LightningDiceApp {
             }
         }
         
-        // FIXED: Only add valid prediction to history (not WAITING)
+        // Only add valid prediction to history (not WAITING)
         if (data.prediction && data.result) {
             const predictedGroup = data.prediction.predictedGroup || data.prediction.ensemble || '--';
             const pattern3step = data.prediction.pattern3step || data.prediction.pattern || '--';
@@ -221,7 +226,9 @@ class LightningDiceApp {
                     predictedGroup: predictedGroup,
                     isCorrect: data.prediction.isCorrect || false,
                     timestamp: new Date(),
-                    isPending: false
+                    isPending: false,
+                    continueValue: data.prediction.dynamicContinueValue || data.prediction.continueGroup,
+                    switchValue: data.prediction.dynamicSwitchValue || data.prediction.switchGroup
                 };
                 this.predictionHistory.unshift(newPrediction);
                 if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
@@ -298,6 +305,11 @@ class LightningDiceApp {
         const predictedGroup = prediction.predictedGroup || prediction.ensemble || '--';
         const confidence = prediction.confidence || prediction.ensembleConfidence || 50;
         
+        // Get dynamic values (shows what CONTINUE/SWITCH currently mean)
+        const continueValue = prediction.dynamicContinueValue || prediction.continueGroup || prediction.recentData || '--';
+        const switchValue = prediction.dynamicSwitchValue || prediction.switchGroup || prediction.previousData || '--';
+        const isPredictionModeActive = prediction.isPredictionModeActive || false;
+        
         if (patternNameEl) patternNameEl.innerHTML = `<span class="pattern-highlight">${pattern3step}</span>`;
         if (protectionTypeEl) {
             const protectionClass = protectionType === 'CONTINUE' ? 'protection-continue' : 'protection-switch';
@@ -305,7 +317,13 @@ class LightningDiceApp {
         }
         if (predictionGroupEl) predictionGroupEl.innerHTML = `${this.getGroupIcon(predictedGroup)} ${predictedGroup}`;
         if (predictionConfidenceEl) predictionConfidenceEl.textContent = `${confidence}%`;
-        if (patternDescriptionEl) patternDescriptionEl.textContent = prediction.description || this.getPatternDescription(pattern3step);
+        if (patternDescriptionEl) {
+            if (isPredictionModeActive) {
+                patternDescriptionEl.innerHTML = `🔄 Dynamic Mode: CONTINUE = Last Result (${continueValue}) | SWITCH = Previous Result (${switchValue})`;
+            } else {
+                patternDescriptionEl.textContent = prediction.description || this.getPatternDescription(pattern3step);
+            }
+        }
         
         // Final prediction card
         if (finalIcon) finalIcon.textContent = this.getGroupIcon(predictedGroup);
@@ -314,11 +332,48 @@ class LightningDiceApp {
         if (confidenceFill) confidenceFill.style.width = `${confidence}%`;
         if (finalConfidence) finalConfidence.textContent = `${confidence}%`;
         if (predictionType) predictionType.textContent = `(${protectionType})`;
+        
+        // Enhanced explanation showing dynamic values
         if (finalExplanation) {
-            finalExplanation.innerHTML = `Pattern <strong>${pattern3step}</strong> detected. Using <strong>${protectionType}</strong> protection: predicting <strong>${predictedGroup}</strong> with ${confidence}% confidence.`;
+            if (isPredictionModeActive) {
+                finalExplanation.innerHTML = `
+                    <strong>🎯 PREDICTION MODE ACTIVE</strong><br>
+                    Pattern <strong>${pattern3step}</strong> detected (TRIGGER).<br>
+                    Using <strong>${protectionType}</strong> protection rule.<br>
+                    <strong>${protectionType}</strong> currently means: <strong style="color:#fbbf24;">${protectionType === 'CONTINUE' ? continueValue : switchValue}</strong><br>
+                    <span style="font-size:11px; opacity:0.7;">🔄 Values update automatically with each new result until correct.</span>
+                `;
+            } else {
+                finalExplanation.innerHTML = `Pattern <strong>${pattern3step}</strong> detected. Using <strong>${protectionType}</strong> protection: predicting <strong>${predictedGroup}</strong> with ${confidence}% confidence.`;
+            }
         }
-        if (finalWeights && prediction.continueGroup && prediction.switchGroup) {
-            finalWeights.innerHTML = `🔄 CONTINUE would give: ${prediction.continueGroup} | 🔀 SWITCH would give: ${prediction.switchGroup}`;
+        
+        // Show dynamic values in weights section
+        if (finalWeights) {
+            if (isPredictionModeActive) {
+                finalWeights.innerHTML = `
+                    <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 8px; margin-top: 5px;">
+                        🔄 <strong>DYNAMIC VALUES (Real-time)</strong><br>
+                        🟢 CONTINUE = Last Result: <strong style="color:#4ade80;">${continueValue}</strong> | 
+                        🟡 SWITCH = Previous Result: <strong style="color:#fbbf24;">${switchValue}</strong><br>
+                        <span style="font-size:10px;">⚠️ These values update with each new result when in prediction mode</span>
+                    </div>
+                `;
+            } else if (prediction.continueGroup && prediction.switchGroup) {
+                finalWeights.innerHTML = `🔄 CONTINUE would give: ${prediction.continueGroup} | 🔀 SWITCH would give: ${prediction.switchGroup}`;
+            } else {
+                finalWeights.innerHTML = '';
+            }
+        }
+        
+        // Update the continue/switch display in pattern row if exists
+        const continueDisplayEl = document.getElementById('continueDisplayValue');
+        const switchDisplayEl = document.getElementById('switchDisplayValue');
+        if (continueDisplayEl && switchDisplayEl && isPredictionModeActive) {
+            continueDisplayEl.textContent = continueValue;
+            switchDisplayEl.textContent = switchValue;
+            continueDisplayEl.style.color = '#4ade80';
+            switchDisplayEl.style.color = '#fbbf24';
         }
     }
     
@@ -332,6 +387,7 @@ class LightningDiceApp {
         const finalExplanation = document.getElementById('finalExplanation');
         const confidenceFill = document.getElementById('confidenceFill');
         const predictionType = document.getElementById('predictionType');
+        const finalWeights = document.getElementById('finalWeights');
         
         if (patternNameEl) patternNameEl.innerHTML = '<span class="waiting-text">⏳ Waiting for 3 results...</span>';
         if (protectionTypeEl) protectionTypeEl.innerHTML = '<span class="waiting-text">--</span>';
@@ -343,20 +399,21 @@ class LightningDiceApp {
         if (predictionType) predictionType.textContent = '(WAIT MODE)';
         if (finalExplanation) {
             const needed = 3 - (this.allResults?.length || 0);
-            finalExplanation.innerHTML = `⏳ Pattern recognition requires 3 results. Currently have ${this.allResults?.length || 0} results. ${needed > 0 ? `Need ${needed} more result(s) to analyze pattern.` : 'Analyzing pattern...'}`;
+            finalExplanation.innerHTML = `⏳ Pattern recognition requires 3 results. Currently have ${this.allResults?.length || 0} results. ${needed > 0 ? `Need ${needed} more result(s) to analyze pattern.` : 'Analyzing pattern...'}<br><span style="font-size:11px;">✨ When pattern matches, prediction mode will activate with dynamic CONTINUE/SWITCH values.</span>`;
         }
+        if (finalWeights) finalWeights.innerHTML = '';
     }
     
     getPatternDescription(pattern) {
         const descriptions = {
-            "LOW→HIGH→MEDIUM": "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে",
-            "HIGH→LOW→MEDIUM": "HIGH থেকে LOW হয়ে MEDIUM এ এসেছে",
-            "MEDIUM→LOW→HIGH": "MEDIUM থেকে LOW হয়ে HIGH এ এসেছে",
-            "MEDIUM→HIGH→LOW": "MEDIUM থেকে HIGH হয়ে LOW এ এসেছে",
-            "LOW→MEDIUM→HIGH": "LOW থেকে MEDIUM হয়ে HIGH এ এসেছে",
-            "HIGH→MEDIUM→LOW": "HIGH থেকে MEDIUM হয়ে LOW এ এসেছে"
+            "LOW→HIGH→MEDIUM": "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে (TRIGGER pattern)",
+            "HIGH→LOW→MEDIUM": "HIGH থেকে LOW হয়ে MEDIUM এ এসেছে (TRIGGER pattern)",
+            "MEDIUM→LOW→HIGH": "MEDIUM থেকে LOW হয়ে HIGH এ এসেছে (TRIGGER pattern)",
+            "MEDIUM→HIGH→LOW": "MEDIUM থেকে HIGH হয়ে LOW এ এসেছে (TRIGGER pattern)",
+            "LOW→MEDIUM→HIGH": "LOW থেকে MEDIUM হয়ে HIGH এ এসেছে (TRIGGER pattern)",
+            "HIGH→MEDIUM→LOW": "HIGH থেকে MEDIUM হয়ে LOW এ এসেছে (TRIGGER pattern)"
         };
-        return descriptions[pattern] || "3-step pattern detected";
+        return descriptions[pattern] || "3-step pattern detected (prediction mode activated)";
     }
     
     updateStatsDisplay(stats) {
@@ -373,13 +430,12 @@ class LightningDiceApp {
         if (lightningBoostEl) lightningBoostEl.textContent = `${stats.lightningBoost || 0}%`;
     }
     
-    // FIXED: renderHistoryTable now only shows valid predictions (already filtered)
     renderHistoryTable() {
         const tbody = document.getElementById('historyTableBody');
         if (!tbody) return;
         
         if (!this.predictionHistory || this.predictionHistory.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">No predictions yet. Waiting for pattern match...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">No predictions yet. Waiting for pattern match...</td></tr>';
             this.updatePaginationControls();
             return;
         }
@@ -388,7 +444,7 @@ class LightningDiceApp {
         const pageItems = this.predictionHistory.slice(startIndex, startIndex + this.itemsPerPage);
         
         if (pageItems.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">No history data on this page...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">No history data on this page...</td></tr>';
             this.updatePaginationControls();
             return;
         }
@@ -420,13 +476,17 @@ class LightningDiceApp {
             const protectionDisplay = item.protectionType || '--';
             const protectionClass = protectionDisplay === 'CONTINUE' ? 'badge-continue' : (protectionDisplay === 'SWITCH' ? 'badge-switch' : '');
             
+            // Show dynamic values in a tooltip or small text
+            const dynamicInfo = (item.continueValue || item.switchValue) ? 
+                `<div style="font-size:9px; opacity:0.6;">C:${item.continueValue || '-'} S:${item.switchValue || '-'}</div>` : '';
+            
             return `
                 <tr>
                     <td style="font-size: 11px;">${item.time || '--'}</td>
                     <td class="dice-values" style="font-size: 11px;">🎲 ${item.dice || '--'}</td>
                     <td><strong>${item.total || '--'}</strong><br><small>${actualDisplay}</small></td>
                     <td><span class="pattern-badge">${item.pattern3step || '--'}</span></td>
-                    <td><span class="protection-badge ${protectionClass}">${protectionDisplay}</span></td>
+                    <td><span class="protection-badge ${protectionClass}">${protectionDisplay}</span>${dynamicInfo}</td>
                     <td><span class="prediction-badge">${getIcon(item.predictedGroup)} ${item.predictedGroup || '--'}</span></td>
                     <td><span class="result-badge ${getBadgeClass(item.isCorrect, isPending)}">${getCheckmark(item.isCorrect, isPending)}</span></td>
                 </tr>
