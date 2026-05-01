@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="description" content="Lightning Dice Predictor - 3-Step Pattern AI System">
-    <title>Lightning Dice Predictor - 3-Step Pattern AI</title>
+    <meta name="description" content="Lightning Dice Predictor - Dynamic 3-Step Pattern AI System">
+    <title>Lightning Dice Predictor - Dynamic 3-Step Pattern AI v8.0</title>
     <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -14,7 +14,7 @@
             <div class="logo">
                 <span class="lightning-icon">⚡</span>
                 <h1>Lightning Dice Predictor</h1>
-                <span class="version-badge">v7.0 - 3-Step Pattern AI</span>
+                <span class="version-badge">v8.0 - Dynamic 3-Step Pattern AI</span>
             </div>
             <div class="header-buttons">
                 <button class="debug-btn" id="debugBtn" onclick="window.open('/debug.html', '_blank')">🔧 Debug Dashboard</button>
@@ -46,9 +46,9 @@
             </div>
         </div>
 
-        <!-- ============ NEW 3-STEP PATTERN AI SECTION ============ -->
+        <!-- ============ DYNAMIC 3-STEP PATTERN AI SECTION (v8.0) ============ -->
         <div class="prediction-section">
-            <h2>🎯 3-STEP PATTERN RECOGNITION SYSTEM</h2>
+            <h2>🎯 DYNAMIC 3-STEP PATTERN RECOGNITION SYSTEM</h2>
             
             <div class="pattern-info-bar">
                 <div class="info-item">
@@ -59,11 +59,15 @@
                     <span class="info-label">🔍 Pattern Status:</span>
                     <span class="info-value" id="patternStatus">Checking...</span>
                 </div>
+                <div class="info-item" id="dynamicValuesInfo" style="display: none;">
+                    <span class="info-label">🔄 Dynamic Values:</span>
+                    <span class="info-value" id="dynamicValuesDisplay">--</span>
+                </div>
             </div>
 
             <div class="pattern-table">
                 <div class="pattern-header">
-                    <div class="col-pattern">3-Step Pattern</div>
+                    <div class="col-pattern">3-Step Pattern (Trigger)</div>
                     <div class="col-protection">Protection Type</div>
                     <div class="col-prediction">Prediction</div>
                     <div class="col-confidence">Confidence</div>
@@ -77,6 +81,15 @@
                     <div class="col-confidence" id="predictionConfidence">--%</div>
                     <div class="col-description" id="patternDescription">--</div>
                 </div>
+            </div>
+
+            <!-- Dynamic Values Display Row (NEW for v8.0) -->
+            <div class="dynamic-values-row" id="dynamicValuesRow" style="display: none; background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px 16px; margin: 15px 0; text-align: center;">
+                <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap;">
+                    <div><span style="color: #4ade80;">🟢 CONTINUE = Last Result:</span> <strong id="continueDisplayValue" style="color: #4ade80; font-size: 18px;">--</strong></div>
+                    <div><span style="color: #fbbf24;">🟡 SWITCH = Previous Result:</span> <strong id="switchDisplayValue" style="color: #fbbf24; font-size: 18px;">--</strong></div>
+                </div>
+                <div style="font-size: 10px; opacity: 0.6; margin-top: 8px;">⚠️ These values update dynamically with each new result when in prediction mode</div>
             </div>
 
             <div class="final-prediction-card">
@@ -101,40 +114,44 @@
             </div>
         </div>
 
-        <!-- ============ AVAILABLE PATTERNS REFERENCE ============ -->
+        <!-- ============ AVAILABLE PATTERNS REFERENCE (UPDATED for v8.0) ============ -->
         <div class="patterns-reference">
             <div class="section-header">
-                <h2>📚 Available 3-Step Patterns (6 Total)</h2>
+                <h2>📚 Available 3-Step Patterns (6 Total - TRIGGER Only)</h2>
             </div>
             <div class="patterns-grid">
                 <div class="pattern-card">
                     <div class="pattern-3step">LOW → HIGH → MEDIUM</div>
-                    <div class="pattern-actions">CONTINUE: MEDIUM | SWITCH: HIGH</div>
+                    <div class="pattern-actions">🎯 TRIGGER only - activates prediction mode</div>
                 </div>
                 <div class="pattern-card">
                     <div class="pattern-3step">HIGH → LOW → MEDIUM</div>
-                    <div class="pattern-actions">CONTINUE: MEDIUM | SWITCH: LOW</div>
+                    <div class="pattern-actions">🎯 TRIGGER only - activates prediction mode</div>
                 </div>
                 <div class="pattern-card">
                     <div class="pattern-3step">MEDIUM → LOW → HIGH</div>
-                    <div class="pattern-actions">CONTINUE: HIGH | SWITCH: LOW</div>
+                    <div class="pattern-actions">🎯 TRIGGER only - activates prediction mode</div>
                 </div>
                 <div class="pattern-card">
                     <div class="pattern-3step">MEDIUM → HIGH → LOW</div>
-                    <div class="pattern-actions">CONTINUE: LOW | SWITCH: HIGH</div>
+                    <div class="pattern-actions">🎯 TRIGGER only - activates prediction mode</div>
                 </div>
                 <div class="pattern-card">
                     <div class="pattern-3step">LOW → MEDIUM → HIGH</div>
-                    <div class="pattern-actions">CONTINUE: HIGH | SWITCH: MEDIUM</div>
+                    <div class="pattern-actions">🎯 TRIGGER only - activates prediction mode</div>
                 </div>
                 <div class="pattern-card">
                     <div class="pattern-3step">HIGH → MEDIUM → LOW</div>
-                    <div class="pattern-actions">CONTINUE: LOW | SWITCH: MEDIUM</div>
+                    <div class="pattern-actions">🎯 TRIGGER only - activates prediction mode</div>
                 </div>
             </div>
             <div class="pattern-note">
-                💡 <strong>Note:</strong> When a pattern matches, AI predicts using CONTINUE (recent result) or SWITCH (previous result).<br>
-                ⏳ When pattern does NOT match, AI enters <strong>WAIT mode</strong> - no prediction until pattern forms.
+                💡 <strong>How it works (v8.0 Dynamic System):</strong><br>
+                🔹 <strong>Pattern Detection:</strong> When one of the 6 patterns is detected, prediction mode ACTIVATES.<br>
+                🔹 <strong>After Activation:</strong> CONTINUE = Last Result | SWITCH = Previous Result (values update dynamically)<br>
+                🔹 <strong>Wrong Prediction:</strong> Values update with the new result, SAME protection type continues.<br>
+                🔹 <strong>Correct Prediction:</strong> Prediction mode ends, returns to WAIT mode.<br>
+                ⏳ <strong>WAIT mode:</strong> No pattern detected yet - waiting for 3 results to form a pattern.
             </div>
         </div>
 
@@ -180,14 +197,14 @@
                             <th>Time</th>
                             <th>Dice</th>
                             <th>Total</th>
-                            <th>3-Step Pattern</th>
+                            <th>3-Step Pattern (Trigger)</th>
                             <th>Protection</th>
                             <th>Prediction</th>
                             <th>Result</th>
                         </tr>
                     </thead>
                     <tbody id="historyTableBody">
-                        <tr><td colspan="7">Loading history...</td></tr>
+                        <tr><td colspan="7">Loading history......</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -219,7 +236,7 @@
                             <tr><th>Number</th><th>Group</th><th>Frequency</th><th>Percentage</th><th>Last Seen</th></tr>
                         </thead>
                         <tbody id="statsTableBody">
-                            <tr><td colspan="5">Loading statistics...</td></tr>
+                            <tr><td colspan="5">Loading statistics......</td></tr>
                         </tbody>
                     </table>
                 </div>
