@@ -1,6 +1,7 @@
 // ============================================================
 // COMPLETE script.js (UPDATED FOR v7.0 - 3-Step Pattern AI)
 // Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | WAIT Mode
+// FIXED: Only shows valid predictions in history table (WAITING mode filtered out)
 // ============================================================
 
 class LightningDiceApp {
@@ -56,7 +57,14 @@ class LightningDiceApp {
                 return new Date(b.timestamp) - new Date(a.timestamp);
             });
             
-            this.predictionHistory = data.predictions || [];
+            // FIXED: Filter out WAITING predictions from history
+            this.predictionHistory = (data.predictions || []).filter(p => {
+                return p.predictedGroup && 
+                       p.predictedGroup !== 'WAITING' && 
+                       p.predictedGroup !== '--' &&
+                       p.pattern3step && 
+                       p.pattern3step !== '--';
+            });
             this.currentPrediction = data.currentPrediction || null;
             
             // Log pattern info
@@ -66,6 +74,8 @@ class LightningDiceApp {
                 console.log(`📊 Pattern check: ${this.checkPatternMatch(last3) ? 'MATCH' : 'NO MATCH (WAIT MODE)'}`);
             }
             
+            console.log(`✅ Filtered prediction history: ${this.predictionHistory.length} valid predictions (WAITING removed)`);
+            
             this.displayPrediction(this.currentPrediction);
             this.renderHistoryTable();
             this.updateRecentResultsDisplay();
@@ -74,7 +84,7 @@ class LightningDiceApp {
             this.updateStatsDisplay(data.stats);
             this.updateLast3ResultsDisplay();
             
-            console.log(`✅ Initial data loaded: ${this.allResults.length} results, ${this.predictionHistory.length} predictions`);
+            console.log(`✅ Initial data loaded: ${this.allResults.length} results, ${this.predictionHistory.length} valid predictions`);
         } catch (error) {
             console.error('Error loading initial data:', error);
             setTimeout(() => this.loadInitialData(), 2000);
@@ -193,27 +203,36 @@ class LightningDiceApp {
             }
         }
         
-        // Add new prediction to history (NEW FORMAT for v7.0)
+        // FIXED: Only add valid prediction to history (not WAITING)
         if (data.prediction && data.result) {
-            const newPrediction = {
-                id: data.result.id,
-                time: new Date().toLocaleTimeString(),
-                dice: data.result.diceValues || '--',
-                total: data.result.total,
-                actualGroup: data.result.group,
-                pattern3step: data.prediction.pattern3step || data.prediction.pattern || '--',
-                protectionType: data.prediction.protectionType || '--',
-                predictedGroup: data.prediction.predictedGroup || data.prediction.ensemble || '--',
-                isCorrect: data.prediction.isCorrect || false,
-                timestamp: new Date(),
-                isPending: false
-            };
-            this.predictionHistory.unshift(newPrediction);
-            if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
+            const predictedGroup = data.prediction.predictedGroup || data.prediction.ensemble || '--';
+            const pattern3step = data.prediction.pattern3step || data.prediction.pattern || '--';
+            
+            // Only add if it's a valid prediction (not WAITING)
+            if (predictedGroup !== 'WAITING' && predictedGroup !== '--' && pattern3step !== '--') {
+                const newPrediction = {
+                    id: data.result.id,
+                    time: new Date().toLocaleTimeString(),
+                    dice: data.result.diceValues || '--',
+                    total: data.result.total,
+                    actualGroup: data.result.group,
+                    pattern3step: pattern3step,
+                    protectionType: data.prediction.protectionType || '--',
+                    predictedGroup: predictedGroup,
+                    isCorrect: data.prediction.isCorrect || false,
+                    timestamp: new Date(),
+                    isPending: false
+                };
+                this.predictionHistory.unshift(newPrediction);
+                if (this.predictionHistory.length > 1000) this.predictionHistory.pop();
+                console.log(`✅ Added valid prediction to history: ${predictedGroup}`);
+            } else {
+                console.log(`⚠️ Skipping WAITING prediction in history`);
+            }
             this.renderHistoryTable();
         }
         
-        // Update predictions history if provided
+        // Update predictions history if provided (already filtered by server)
         if (data.history) {
             this.predictionHistory = data.history;
             this.renderHistoryTable();
@@ -354,12 +373,13 @@ class LightningDiceApp {
         if (lightningBoostEl) lightningBoostEl.textContent = `${stats.lightningBoost || 0}%`;
     }
     
+    // FIXED: renderHistoryTable now only shows valid predictions (already filtered)
     renderHistoryTable() {
         const tbody = document.getElementById('historyTableBody');
         if (!tbody) return;
         
         if (!this.predictionHistory || this.predictionHistory.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">No prediction history yet. Waiting for data...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7">No predictions yet. Waiting for pattern match...</td></tr>';
             this.updatePaginationControls();
             return;
         }
