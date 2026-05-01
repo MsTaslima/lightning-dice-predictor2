@@ -1,7 +1,7 @@
 // ============================================================
-// new-ai-logic.js (v9.0 - 3-Step Pattern AI with Real-Time Learning)
+// new-ai-logic.js (v10.0 - Dynamic CONTINUE/SWITCH with Real-Time Learning)
 // 
-// 6 Patterns for 3-Step Detection:
+// 6 Patterns for 3-Step Detection (ONLY for pattern detection trigger):
 // 1. LOW → HIGH → MEDIUM
 // 2. HIGH → LOW → MEDIUM
 // 3. MEDIUM → LOW → HIGH
@@ -9,21 +9,21 @@
 // 5. LOW → MEDIUM → HIGH
 // 6. HIGH → MEDIUM → LOW
 //
-// Rules:
-// - When pattern matches → Predict immediately using CONTINUE or SWITCH
-// - CONTINUE = Recent Data (last result of the 3)
-// - SWITCH = Previous Data (second result of the 3)
-// - When prediction is WRONG → Keep predicting with SAME rule (no auto-switch)
+// Rules (UPDATED v10.0):
+// - When pattern matches → START prediction mode with CONTINUE or SWITCH
+// - CONTINUE = Last result (always updates with each new result)
+// - SWITCH = Previous result (always updates with each new result)
+// - When prediction is WRONG → Keep predicting with SAME protection type
 // - When prediction is CORRECT → Go back to WAIT mode
 // - AI learns from history to choose better protection type over time
 // ============================================================
 
 class NewPatternAI {
     constructor() {
-        this.version = "9.0";
-        this.name = "3-Step Pattern AI with Real-Time Learning";
+        this.version = "10.0";
+        this.name = "Dynamic 3-Step Pattern AI with Real-Time Learning";
         
-        // Define the 6 patterns
+        // Define the 6 patterns (ONLY for detection trigger)
         this.patterns = [
             "LOW→HIGH→MEDIUM",
             "HIGH→LOW→MEDIUM",
@@ -33,19 +33,15 @@ class NewPatternAI {
             "HIGH→MEDIUM→LOW"
         ];
         
-        // Define what each pattern predicts (CONTINUE vs SWITCH)
-        // CONTINUE = recent data (3rd result)
-        // SWITCH = previous data (2nd result)
+        // Pattern mapping for display purposes only (not used for actual prediction values)
         this.patternMapping = {
-            // Pattern 1: LOW → HIGH → MEDIUM
             "LOW→HIGH→MEDIUM": {
-                continueGroup: "MEDIUM",  // recent data (3rd)
-                switchGroup: "HIGH",      // previous data (2nd)
+                continueGroup: "MEDIUM",
+                switchGroup: "HIGH",
                 description: "LOW থেকে HIGH হয়ে MEDIUM এ এসেছে",
                 recentData: "MEDIUM",
                 previousData: "HIGH"
             },
-            // Pattern 2: HIGH → LOW → MEDIUM
             "HIGH→LOW→MEDIUM": {
                 continueGroup: "MEDIUM",
                 switchGroup: "LOW",
@@ -53,7 +49,6 @@ class NewPatternAI {
                 recentData: "MEDIUM",
                 previousData: "LOW"
             },
-            // Pattern 3: MEDIUM → LOW → HIGH
             "MEDIUM→LOW→HIGH": {
                 continueGroup: "HIGH",
                 switchGroup: "LOW",
@@ -61,7 +56,6 @@ class NewPatternAI {
                 recentData: "HIGH",
                 previousData: "LOW"
             },
-            // Pattern 4: MEDIUM → HIGH → LOW
             "MEDIUM→HIGH→LOW": {
                 continueGroup: "LOW",
                 switchGroup: "HIGH",
@@ -69,7 +63,6 @@ class NewPatternAI {
                 recentData: "LOW",
                 previousData: "HIGH"
             },
-            // Pattern 5: LOW → MEDIUM → HIGH
             "LOW→MEDIUM→HIGH": {
                 continueGroup: "HIGH",
                 switchGroup: "MEDIUM",
@@ -77,7 +70,6 @@ class NewPatternAI {
                 recentData: "HIGH",
                 previousData: "MEDIUM"
             },
-            // Pattern 6: HIGH → MEDIUM → LOW
             "HIGH→MEDIUM→LOW": {
                 continueGroup: "LOW",
                 switchGroup: "MEDIUM",
@@ -93,13 +85,19 @@ class NewPatternAI {
         this.correctPredictions = 0;
         this.accuracy = 0;
         
-        // Active pattern tracking (for retry logic)
-        this.activePattern = null;        
-        this.activeProtectionType = null;
-        this.activeRecentData = null;
-        this.activePreviousData = null;
-        this.isWaitingForCorrect = false;
-        this.consecutiveWrongCount = 0;
+        // Active prediction tracking (for retry logic with DYNAMIC values)
+        this.activePattern = null;           // Pattern that triggered the prediction mode
+        this.activeProtectionType = null;    // CONTINUE or SWITCH
+        this.isWaitingForCorrect = false;    // Are we in active prediction mode?
+        this.consecutiveWrongCount = 0;      // How many consecutive wrong predictions
+        
+        // DYNAMIC values that update with each new result
+        this.dynamicRecentData = null;       // Last result (for CONTINUE)
+        this.dynamicPreviousData = null;     // Previous result (for SWITCH)
+        
+        // Last result tracking for dynamic updates
+        this.lastResult = null;
+        this.secondLastResult = null;
         
         // Pattern-specific learning data
         this.patternOccurrences = {};
@@ -119,8 +117,11 @@ class NewPatternAI {
         }
         
         console.log(`🤖 ${this.name} initialized with ${this.patterns.length} patterns`);
-        console.log(`📋 Rules: CONTINUE = Recent Data | SWITCH = Previous Data`);
-        console.log(`📋 AI learns from history to choose better protection type over time`);
+        console.log(`📋 NEW RULES (v10.0):`);
+        console.log(`   - CONTINUE = Last Result (updates with each new result)`);
+        console.log(`   - SWITCH = Previous Result (updates with each new result)`);
+        console.log(`   - Pattern detection only TRIGGERS the prediction mode`);
+        console.log(`   - After trigger, values update dynamically until correct`);
     }
     
     /**
@@ -156,49 +157,62 @@ class NewPatternAI {
     }
     
     /**
-     * Get prediction for a matched pattern based on protection type
-     * CONTINUE = recentData (3rd result)
-     * SWITCH = previousData (2nd result)
+     * Get prediction based on DYNAMIC values (NOT from pattern mapping)
+     * CONTINUE = dynamicRecentData (last result)
+     * SWITCH = dynamicPreviousData (previous result)
      */
-    getPredictionForPattern(patternString, protectionType) {
-        const mapping = this.patternMapping[patternString];
-        
-        if (!mapping) {
-            return {
-                predictedGroup: null,
-                confidence: 0,
-                error: "Pattern not found in mapping"
-            };
-        }
-        
-        let predictedGroup = null;
-        let confidence = 70; // Base confidence
-        
+    getDynamicPrediction(protectionType) {
         if (protectionType === 'CONTINUE') {
-            predictedGroup = mapping.continueGroup; // recent data
-            const histAccuracy = this.patternOccurrences[patternString]?.continueAccuracy || 50;
-            confidence = Math.min(92, Math.max(45, (confidence + histAccuracy) / 2));
+            return {
+                predictedGroup: this.dynamicRecentData,
+                confidence: 75,
+                description: `CONTINUE: Latest result (${this.dynamicRecentData})`
+            };
         } else if (protectionType === 'SWITCH') {
-            predictedGroup = mapping.switchGroup; // previous data
-            const histAccuracy = this.patternOccurrences[patternString]?.switchAccuracy || 50;
-            confidence = Math.min(92, Math.max(45, (confidence + histAccuracy) / 2));
+            return {
+                predictedGroup: this.dynamicPreviousData,
+                confidence: 75,
+                description: `SWITCH: Previous result (${this.dynamicPreviousData})`
+            };
         } else {
             return {
                 predictedGroup: null,
                 confidence: 0,
-                error: `Invalid protection type: ${protectionType}`
+                description: `Invalid protection type`
             };
         }
+    }
+    
+    /**
+     * Update dynamic values with new result
+     * Called after each result when in active prediction mode
+     */
+    updateDynamicValues(newResult) {
+        // Shift the values: new result becomes recent, old recent becomes previous
+        this.dynamicPreviousData = this.dynamicRecentData;
+        this.dynamicRecentData = newResult;
         
-        return {
-            predictedGroup: predictedGroup,
-            confidence: Math.round(confidence),
-            continueGroup: mapping.continueGroup,
-            switchGroup: mapping.switchGroup,
-            recentData: mapping.recentData,
-            previousData: mapping.previousData,
-            description: mapping.description
-        };
+        console.log(`   📊 DYNAMIC VALUES UPDATED:`);
+        console.log(`      CONTINUE (Last) = ${this.dynamicRecentData}`);
+        console.log(`      SWITCH (Previous) = ${this.dynamicPreviousData}`);
+    }
+    
+    /**
+     * Initialize dynamic values from a pattern
+     * Sets the initial values when pattern is first detected
+     */
+    initializeDynamicValuesFromPattern(patternString) {
+        const patternData = this.getPatternData(patternString);
+        if (patternData) {
+            this.dynamicRecentData = patternData.recentData;   // 3rd result of pattern
+            this.dynamicPreviousData = patternData.previousData; // 2nd result of pattern
+            this.lastResult = this.dynamicRecentData;
+            this.secondLastResult = this.dynamicPreviousData;
+            
+            console.log(`   🎯 DYNAMIC VALUES INITIALIZED:`);
+            console.log(`      CONTINUE (Last) = ${this.dynamicRecentData}`);
+            console.log(`      SWITCH (Previous) = ${this.dynamicPreviousData}`);
+        }
     }
     
     /**
@@ -236,29 +250,42 @@ class NewPatternAI {
         console.log(`🔄 Resetting active pattern. Going back to WAIT mode.`);
         this.activePattern = null;
         this.activeProtectionType = null;
-        this.activeRecentData = null;
-        this.activePreviousData = null;
         this.isWaitingForCorrect = false;
         this.consecutiveWrongCount = 0;
+        this.dynamicRecentData = null;
+        this.dynamicPreviousData = null;
+        this.lastResult = null;
+        this.secondLastResult = null;
     }
     
     /**
      * MAIN PREDICTION FUNCTION
      */
-    predict(last3Results, protectionType = null) {
-        // CASE 1: Active pattern exists - retry with SAME rule
+    predict(last3Results, currentResultForUpdate = null, protectionType = null) {
+        
+        // CASE 1: Active pattern exists - we are in prediction mode
         if (this.isWaitingForCorrect && this.activePattern) {
-            console.log(`🔄 Active pattern exists. Retrying with SAME rule (wrong count: ${this.consecutiveWrongCount})`);
-            console.log(`   Active Pattern: ${this.activePattern}`);
+            console.log(`🔄 Active prediction mode (wrong count: ${this.consecutiveWrongCount})`);
             console.log(`   Protection Type: ${this.activeProtectionType}`);
-            console.log(`   CONTINUE = Recent Data (${this.activeRecentData}) | SWITCH = Previous Data (${this.activePreviousData})`);
+            console.log(`   DYNAMIC CONTINUE (Last) = ${this.dynamicRecentData}`);
+            console.log(`   DYNAMIC SWITCH (Previous) = ${this.dynamicPreviousData}`);
             
-            const prediction = this.getPredictionForPattern(this.activePattern, this.activeProtectionType);
+            // Get prediction using dynamic values
+            const prediction = this.getDynamicPrediction(this.activeProtectionType);
             
             if (!prediction.predictedGroup) {
                 console.log(`⚠️ Failed to get prediction for active pattern, resetting...`);
                 this.resetActivePattern();
-                return this.predict(last3Results, protectionType);
+                return this.predict(last3Results, currentResultForUpdate, protectionType);
+            }
+            
+            // Calculate confidence based on historical data
+            let confidence = 70;
+            const occurrence = this.patternOccurrences[this.activePattern];
+            if (occurrence) {
+                const histAccuracy = this.activeProtectionType === 'CONTINUE' ? 
+                    occurrence.continueAccuracy : occurrence.switchAccuracy;
+                confidence = Math.min(92, Math.max(45, (confidence + histAccuracy) / 2));
             }
             
             this.recordPrediction({
@@ -266,14 +293,14 @@ class NewPatternAI {
                 protectionType: this.activeProtectionType,
                 predictedGroup: prediction.predictedGroup,
                 timestamp: new Date().toISOString(),
-                confidence: prediction.confidence,
+                confidence: confidence,
                 actualGroup: null,
-                isRetry: true,
-                retryNumber: this.consecutiveWrongCount + 1
+                isRetry: this.consecutiveWrongCount > 0,
+                retryNumber: this.consecutiveWrongCount
             });
             
-            console.log(`🔄 RETRY PREDICTION #${this.consecutiveWrongCount + 1}`);
-            console.log(`   Rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData}`);
+            console.log(`🎯 PREDICTION (${this.consecutiveWrongCount > 0 ? 'RETRY #' + this.consecutiveWrongCount : 'INITIAL'})`);
+            console.log(`   Rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.dynamicRecentData : this.dynamicPreviousData}`);
             console.log(`   Prediction: ${prediction.predictedGroup}`);
             
             return {
@@ -281,23 +308,23 @@ class NewPatternAI {
                 pattern: this.activePattern,
                 protectionType: this.activeProtectionType,
                 predictedGroup: prediction.predictedGroup,
-                confidence: prediction.confidence,
-                continueGroup: prediction.continueGroup,
-                switchGroup: prediction.switchGroup,
-                recentData: this.activeRecentData,
-                previousData: this.activePreviousData,
+                confidence: Math.round(confidence),
+                continueGroup: this.dynamicRecentData,
+                switchGroup: this.dynamicPreviousData,
+                recentData: this.dynamicRecentData,
+                previousData: this.dynamicPreviousData,
                 description: prediction.description,
                 waitingForData: false,
-                isRetry: true,
-                retryCount: this.consecutiveWrongCount + 1,
-                message: `Retry #${this.consecutiveWrongCount + 1}: Using ${this.activeProtectionType} rule.`,
+                isRetry: this.consecutiveWrongCount > 0,
+                retryCount: this.consecutiveWrongCount,
+                message: `${this.consecutiveWrongCount > 0 ? `Retry #${this.consecutiveWrongCount}` : 'Initial prediction'}: Using ${this.activeProtectionType} rule.`,
                 last3Results: last3Results
             };
         }
         
-        // CASE 2: Need to check for new pattern
+        // CASE 2: Need to check for new pattern (WAIT mode)
         if (!last3Results || last3Results.length !== 3) {
-            console.log(`⚠️ Cannot predict: need exactly 3 results, got ${last3Results?.length || 0}`);
+            console.log(`⚠️ Cannot detect pattern: need exactly 3 results, got ${last3Results?.length || 0}`);
             return {
                 status: "WAITING",
                 pattern: null,
@@ -312,8 +339,9 @@ class NewPatternAI {
         const patternString = this.getPatternString(last3Results);
         console.log(`🔍 Checking pattern: ${patternString}`);
         
+        // CASE 3: Pattern does NOT match - stay in WAIT mode
         if (!this.isPatternMatch(patternString)) {
-            console.log(`❌ Pattern does NOT match any of the 6 patterns. Entering WAIT mode.`);
+            console.log(`❌ Pattern does NOT match any of the 6 patterns. Staying in WAIT mode.`);
             return {
                 status: "WAITING",
                 pattern: patternString,
@@ -326,16 +354,13 @@ class NewPatternAI {
             };
         }
         
-        // CASE 3: Pattern matched!
-        console.log(`✅ Pattern MATCHED!`);
+        // CASE 4: Pattern matched! START prediction mode
+        console.log(`✅ Pattern MATCHED! Starting prediction mode.`);
         
         const patternData = this.getPatternData(patternString);
-        const recentData = patternData.recentData;
-        const previousData = patternData.previousData;
         
-        console.log(`   Recent Data (3rd result): ${recentData}`);
-        console.log(`   Previous Data (2nd result): ${previousData}`);
-        console.log(`   Rule: CONTINUE = Recent Data (${recentData}) | SWITCH = Previous Data (${previousData})`);
+        // Initialize dynamic values from the pattern
+        this.initializeDynamicValuesFromPattern(patternString);
         
         // Decide protection type
         let finalProtectionType = protectionType;
@@ -349,7 +374,8 @@ class NewPatternAI {
         
         console.log(`   Selected Protection: ${finalProtectionType} (${decisionMethod})`);
         
-        const prediction = this.getPredictionForPattern(patternString, finalProtectionType);
+        // Get prediction using dynamic values
+        const prediction = this.getDynamicPrediction(finalProtectionType);
         
         if (!prediction.predictedGroup) {
             return {
@@ -358,16 +384,23 @@ class NewPatternAI {
                 protectionType: finalProtectionType,
                 predictedGroup: null,
                 confidence: 0,
-                message: prediction.error,
+                message: "Failed to get prediction",
                 waitingForData: false
             };
         }
         
-        // ACTIVATE THE PATTERN
+        // Calculate confidence
+        let confidence = 70;
+        const occurrence = this.patternOccurrences[patternString];
+        if (occurrence) {
+            const histAccuracy = finalProtectionType === 'CONTINUE' ? 
+                occurrence.continueAccuracy : occurrence.switchAccuracy;
+            confidence = Math.min(92, Math.max(45, (confidence + histAccuracy) / 2));
+        }
+        
+        // ACTIVATE THE PREDICTION MODE
         this.activePattern = patternString;
         this.activeProtectionType = finalProtectionType;
-        this.activeRecentData = recentData;
-        this.activePreviousData = previousData;
         this.isWaitingForCorrect = true;
         this.consecutiveWrongCount = 0;
         
@@ -376,40 +409,44 @@ class NewPatternAI {
             protectionType: finalProtectionType,
             predictedGroup: prediction.predictedGroup,
             timestamp: new Date().toISOString(),
-            confidence: prediction.confidence,
+            confidence: Math.round(confidence),
             actualGroup: null,
             isRetry: false,
-            recentData: recentData,
-            previousData: previousData
+            retryNumber: 0,
+            recentData: this.dynamicRecentData,
+            previousData: this.dynamicPreviousData
         });
         
-        console.log(`🎯 PREDICTION READY`);
+        console.log(`🎯 PREDICTION MODE ACTIVATED`);
         console.log(`   Pattern: ${patternString}`);
-        console.log(`   Rule: ${finalProtectionType} = ${finalProtectionType === 'CONTINUE' ? recentData : previousData}`);
-        console.log(`   Prediction: ${prediction.predictedGroup} (${prediction.confidence}% confidence)`);
-        console.log(`   📌 Will keep predicting with SAME rule until CORRECT.`);
+        console.log(`   Protection: ${finalProtectionType}`);
+        console.log(`   Rule: ${finalProtectionType} = ${finalProtectionType === 'CONTINUE' ? this.dynamicRecentData : this.dynamicPreviousData}`);
+        console.log(`   Prediction: ${prediction.predictedGroup} (${Math.round(confidence)}% confidence)`);
+        console.log(`   📌 Will retry with SAME ${finalProtectionType} rule until CORRECT`);
+        console.log(`   📌 Values will UPDATE dynamically with each new result`);
         
         return {
             status: "PREDICTION_READY",
             pattern: patternString,
             protectionType: finalProtectionType,
             predictedGroup: prediction.predictedGroup,
-            confidence: prediction.confidence,
-            continueGroup: prediction.continueGroup,
-            switchGroup: prediction.switchGroup,
-            recentData: recentData,
-            previousData: previousData,
+            confidence: Math.round(confidence),
+            continueGroup: this.dynamicRecentData,
+            switchGroup: this.dynamicPreviousData,
+            recentData: this.dynamicRecentData,
+            previousData: this.dynamicPreviousData,
             description: prediction.description,
             decisionMethod: decisionMethod,
             waitingForData: false,
             isActive: true,
-            message: `Pattern matched! Using ${finalProtectionType} rule. Will retry with SAME rule if wrong.`,
+            message: `Pattern matched! Using ${finalProtectionType} rule. Values will update dynamically.`,
             last3Results: last3Results
         };
     }
     
     /**
      * Update AI with actual result
+     * This is called AFTER a result comes in
      */
     updateWithResult(actualGroup) {
         const pendingIndex = this.patternHistory.findIndex(p => p.actualGroup === null);
@@ -454,23 +491,21 @@ class NewPatternAI {
             }
         }
         
-        console.log(`📊 LEARNING UPDATE:`);
+        console.log(`📊 UPDATE RESULT:`);
         console.log(`   Pattern: ${prediction.pattern}`);
-        console.log(`   Rule: ${prediction.protectionType}`);
+        console.log(`   Protection: ${prediction.protectionType}`);
         console.log(`   Predicted: ${prediction.predictedGroup} → Actual: ${actualGroup}`);
         console.log(`   Result: ${prediction.isCorrect ? '✓ CORRECT' : '✗ WRONG'}`);
         
-        // Update pattern-specific accuracy log
         if (occurrence) {
             console.log(`   Pattern Stats - CONTINUE: ${occurrence.continueAccuracy.toFixed(1)}% (${occurrence.continueCorrect}/${occurrence.continueCount}) | SWITCH: ${occurrence.switchAccuracy.toFixed(1)}% (${occurrence.switchCorrect}/${occurrence.switchCount})`);
         }
-        
         console.log(`   Overall Accuracy: ${this.accuracy.toFixed(1)}% (${this.correctPredictions}/${this.totalPredictions})`);
         
-        // Determine if we reset or keep retrying
+        // Handle the result
         if (prediction.isCorrect) {
-            console.log(`✅ CORRECT! Resetting pattern. Going back to WAIT mode.`);
-            console.log(`   Wrong attempts for this pattern: ${this.consecutiveWrongCount}`);
+            console.log(`✅ CORRECT! Resetting prediction mode. Going back to WAIT mode.`);
+            console.log(`   Wrong attempts for this session: ${this.consecutiveWrongCount}`);
             this.resetActivePattern();
             
             return {
@@ -479,12 +514,21 @@ class NewPatternAI {
                 actualGroup: actualGroup,
                 newAccuracy: this.accuracy,
                 resetPattern: true,
-                message: "Correct prediction! Pattern reset."
+                message: "Correct prediction! Reset to WAIT mode."
             };
         } else {
+            // WRONG prediction - update dynamic values and retry with SAME protection type
             this.consecutiveWrongCount++;
-            console.log(`❌ WRONG! Keeping SAME rule. Wrong count: ${this.consecutiveWrongCount}`);
-            console.log(`   Will retry with SAME rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData}`);
+            
+            // CRITICAL: Update dynamic values with the actual result
+            // This ensures CONTINUE now points to the latest result
+            console.log(`❌ WRONG! Updating dynamic values with actual result: ${actualGroup}`);
+            this.updateDynamicValues(actualGroup);
+            
+            console.log(`   Keeping SAME protection type: ${this.activeProtectionType}`);
+            console.log(`   Wrong count: ${this.consecutiveWrongCount}`);
+            console.log(`   NEW DYNAMIC VALUES - CONTINUE: ${this.dynamicRecentData}, SWITCH: ${this.dynamicPreviousData}`);
+            console.log(`   Will retry with ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.dynamicRecentData : this.dynamicPreviousData}`);
             
             return {
                 isCorrect: false,
@@ -493,11 +537,34 @@ class NewPatternAI {
                 newAccuracy: this.accuracy,
                 keepPattern: true,
                 consecutiveWrongCount: this.consecutiveWrongCount,
-                message: `Wrong prediction! Retrying with SAME ${this.activeProtectionType} rule. Attempt #${this.consecutiveWrongCount + 1}`,
+                message: `Wrong prediction! Updated values. Retrying with SAME ${this.activeProtectionType} rule. Attempt #${this.consecutiveWrongCount + 1}`,
                 activePattern: this.activePattern,
-                activeProtectionType: this.activeProtectionType
+                activeProtectionType: this.activeProtectionType,
+                newContinueValue: this.dynamicRecentData,
+                newSwitchValue: this.dynamicPreviousData
             };
         }
+    }
+    
+    /**
+     * Update dynamic values externally (called when a new result comes in)
+     * This method is called by server.js when a new result is detected
+     */
+    updateWithNewResult(newResult) {
+        if (this.isWaitingForCorrect && this.activePattern) {
+            console.log(`🔄 New result detected while in prediction mode: ${newResult}`);
+            this.updateDynamicValues(newResult);
+            return {
+                updated: true,
+                continueValue: this.dynamicRecentData,
+                switchValue: this.dynamicPreviousData,
+                message: `Dynamic values updated with new result: ${newResult}`
+            };
+        }
+        return {
+            updated: false,
+            message: "Not in prediction mode, no update needed"
+        };
     }
     
     /**
@@ -522,11 +589,11 @@ class NewPatternAI {
             isActive: true,
             pattern: this.activePattern,
             protectionType: this.activeProtectionType,
-            recentData: this.activeRecentData,
-            previousData: this.activePreviousData,
-            ruleDescription: `${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData}`,
+            continueValue: this.dynamicRecentData,
+            switchValue: this.dynamicPreviousData,
+            ruleDescription: `${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.dynamicRecentData : this.dynamicPreviousData}`,
             consecutiveWrongCount: this.consecutiveWrongCount,
-            message: `Active: ${this.activePattern} | Rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.activeRecentData : this.activePreviousData} | Wrong attempts: ${this.consecutiveWrongCount}`
+            message: `Active: ${this.activePattern} | Rule: ${this.activeProtectionType} = ${this.activeProtectionType === 'CONTINUE' ? this.dynamicRecentData : this.dynamicPreviousData} | Wrong attempts: ${this.consecutiveWrongCount}`
         };
     }
     
@@ -596,6 +663,19 @@ class NewPatternAI {
     }
     
     /**
+     * Get current dynamic values
+     */
+    getDynamicValues() {
+        return {
+            continueValue: this.dynamicRecentData,
+            switchValue: this.dynamicPreviousData,
+            isActive: this.isActive(),
+            protectionType: this.activeProtectionType,
+            consecutiveWrongCount: this.consecutiveWrongCount
+        };
+    }
+    
+    /**
      * Export state for database persistence
      */
     exportState() {
@@ -608,10 +688,12 @@ class NewPatternAI {
             patternHistory: this.patternHistory.slice(0, 100),
             activePattern: this.activePattern,
             activeProtectionType: this.activeProtectionType,
-            activeRecentData: this.activeRecentData,
-            activePreviousData: this.activePreviousData,
             isWaitingForCorrect: this.isWaitingForCorrect,
-            consecutiveWrongCount: this.consecutiveWrongCount
+            consecutiveWrongCount: this.consecutiveWrongCount,
+            dynamicRecentData: this.dynamicRecentData,
+            dynamicPreviousData: this.dynamicPreviousData,
+            lastResult: this.lastResult,
+            secondLastResult: this.secondLastResult
         };
     }
     
@@ -637,13 +719,16 @@ class NewPatternAI {
         if (state.activePattern) {
             this.activePattern = state.activePattern;
             this.activeProtectionType = state.activeProtectionType;
-            this.activeRecentData = state.activeRecentData;
-            this.activePreviousData = state.activePreviousData;
             this.isWaitingForCorrect = state.isWaitingForCorrect || false;
             this.consecutiveWrongCount = state.consecutiveWrongCount || 0;
+            this.dynamicRecentData = state.dynamicRecentData || null;
+            this.dynamicPreviousData = state.dynamicPreviousData || null;
+            this.lastResult = state.lastResult || null;
+            this.secondLastResult = state.secondLastResult || null;
             
             if (this.isWaitingForCorrect) {
                 console.log(`🔄 Loaded active pattern: ${this.activePattern} (${this.consecutiveWrongCount} wrong attempts)`);
+                console.log(`   Loaded dynamic values - CONTINUE: ${this.dynamicRecentData}, SWITCH: ${this.dynamicPreviousData}`);
             }
         }
         
@@ -686,14 +771,14 @@ class NewPatternAI {
     /**
      * Set protection type for current active pattern
      */
-    setNextProtectionType(protectionType) {
+    setProtectionType(protectionType) {
         if (!this.getProtectionTypes().includes(protectionType)) {
             console.log(`⚠️ Invalid protection type: ${protectionType}`);
             return false;
         }
         
         if (this.isActive()) {
-            console.log(`🔄 Updating active pattern protection from ${this.activeProtectionType} to ${protectionType}`);
+            console.log(`🔄 Updating active protection type from ${this.activeProtectionType} to ${protectionType}`);
             this.activeProtectionType = protectionType;
         }
         
@@ -710,8 +795,8 @@ class NewPatternAI {
         
         return {
             pattern: patternString,
-            continueRule: `CONTINUE = Recent Data (${mapping.recentData})`,
-            switchRule: `SWITCH = Previous Data (${mapping.previousData})`,
+            continueRule: `CONTINUE = Last Result (dynamic)`,
+            switchRule: `SWITCH = Previous Result (dynamic)`,
             description: mapping.description
         };
     }
