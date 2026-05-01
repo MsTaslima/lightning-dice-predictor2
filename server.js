@@ -1,8 +1,7 @@
 // ============================================================
-// MODIFIED server.js (READY FOR v7.0 - New 3-Step Pattern AI)
-// Removed: 4 Old AI Models (Stick, Extreme, LowMid, MidHigh, Ensemble)
-// Added: Placeholder for New 3-Step Pattern AI
-// Features: Data Collection, Database, WebSocket, Telegram (kept)
+// MODIFIED server.js (v9.0 - 3-Step Pattern AI with Real-Time Learning)
+// Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic
+// Telegram: ONLY sends notifications for CORRECT and WRONG predictions
 // ============================================================
 
 // Fix memory leak warnings
@@ -20,9 +19,8 @@ const sqlite3 = require('sqlite3').verbose();
 const WebSocket = require('ws');
 const fs = require('fs');
 
-// ============ NEW AI IMPORT (TO BE IMPLEMENTED) ============
-// TODO: After creating new-ai-logic.js, uncomment the line below
-// const { NewPatternAI } = require('./new-ai-logic');
+// ============ AI IMPORT ============
+const { NewPatternAI } = require('./new-ai-logic');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,8 +29,10 @@ const PORT = process.env.PORT || 3000;
 let aiMissCount = 0;
 let alertTriggered = false;
 
-// ============ TELEGRAM FUNCTION ============
-async function sendTelegramNotification(missCount, actualGroup, predictedGroup, nextPrediction) {
+// ============ SIMPLIFIED TELEGRAM FUNCTIONS ============
+// ONLY sends for CORRECT and WRONG predictions
+
+async function sendTelegramWrongNotification(actualGroup, predictedGroup, retryCount = 0) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
     
@@ -41,29 +41,49 @@ async function sendTelegramNotification(missCount, actualGroup, predictedGroup, 
         return;
     }
     
-    const message = `⚡ LIGHTNING DICE ALERT ⚡
+    const retryText = retryCount > 0 ? ` (Retry #${retryCount})` : '';
+    
+    const message = `❌ WRONG PREDICTION ❌
 
-🎯 AI has been WRONG for ${missCount} consecutive rounds!
-
-📊 Current Round:
-• Predicted: ${predictedGroup}
-• Actual: ${actualGroup}
-
-🔮 NEXT ROUND PREDICTION:
-🎲 ${nextPrediction}
-
-📎 Live: https://web-production-ebac2.up.railway.app`;
+Predicted: ${predictedGroup}
+Actual: ${actualGroup}${retryText}`;
 
     try {
         const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
         await axios.post(url, {
             chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
+            text: message
         });
-        console.log(`✅ Telegram notification sent (${missCount} consecutive misses)`);
+        console.log(`📱 Telegram: WRONG notification sent`);
     } catch (error) {
-        console.error('❌ Failed to send Telegram notification:', error.message);
+        console.error('❌ Telegram error:', error.message);
+    }
+}
+
+async function sendTelegramCorrectNotification(actualGroup, predictedGroup, wasRetry = false, retryCount = 0) {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    
+    if (!botToken || !chatId) {
+        return;
+    }
+    
+    const retryText = wasRetry ? ` (Correct after ${retryCount} retries)` : '';
+    
+    const message = `✅ CORRECT PREDICTION ✅
+
+Predicted: ${predictedGroup}
+Actual: ${actualGroup}${retryText}`;
+
+    try {
+        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+        await axios.post(url, {
+            chat_id: chatId,
+            text: message
+        });
+        console.log(`📱 Telegram: CORRECT notification sent`);
+    } catch (error) {
+        console.error('❌ Telegram error:', error.message);
     }
 }
 
@@ -79,7 +99,7 @@ const dbPath = path.join(dbDir, 'lightning_dice.db');
 console.log('📂 Database path:', dbPath);
 const db = new sqlite3.Database(dbPath);
 
-// Create tables (UPDATED for v7.0)
+// Create tables (UPDATED for v9.0)
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS results (
         id TEXT PRIMARY KEY,
@@ -92,7 +112,6 @@ db.serialize(() => {
         payout INTEGER
     )`);
     
-    // NEW predictions table for 3-Step Pattern AI
     db.run(`CREATE TABLE IF NOT EXISTS predictions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         result_id TEXT UNIQUE,
@@ -102,10 +121,11 @@ db.serialize(() => {
         prediction_timestamp DATETIME,
         actual_group TEXT,
         actual_timestamp DATETIME,
-        is_correct INTEGER DEFAULT -1
+        is_correct INTEGER DEFAULT -1,
+        is_retry INTEGER DEFAULT 0,
+        retry_number INTEGER DEFAULT 0
     )`);
     
-    // NEW AI stats table (simplified)
     db.run(`CREATE TABLE IF NOT EXISTS ai_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         total_predictions INTEGER DEFAULT 0,
@@ -114,7 +134,6 @@ db.serialize(() => {
         last_updated DATETIME
     )`);
     
-    // NEW pattern history table for 3-step patterns
     db.run(`CREATE TABLE IF NOT EXISTS pattern_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pattern_3step TEXT NOT NULL,
@@ -125,27 +144,80 @@ db.serialize(() => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     
-    // NEW AI state storage
     db.run(`CREATE TABLE IF NOT EXISTS ai_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         state_data TEXT,
         updated_at DATETIME
     )`);
     
-    console.log('✅ Database tables created/verified (v7.0 ready)');
+    // Add new columns if not exists
+    db.run(`ALTER TABLE predictions ADD COLUMN is_retry INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column')) {
+            console.log('Table already has is_retry column');
+        }
+    });
+    db.run(`ALTER TABLE predictions ADD COLUMN retry_number INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column')) {
+            console.log('Table already has retry_number column');
+        }
+    });
+    
+    console.log('✅ Database tables created/verified (v9.0 ready)');
 });
 
-// ============ NEW AI MODEL INITIALIZATION ============
-// TODO: Initialize your new AI model here
+// ============ AI MODEL INITIALIZATION ============
 let serverAI = null;
 
 async function initNewAI() {
-    console.log('🤖 Initializing New 3-Step Pattern AI...');
-    // TODO: After creating new-ai-logic.js, uncomment below
-    // serverAI = new NewPatternAI();
-    // await serverAI.loadState(db);
-    console.log('✅ New AI ready (waiting for new-ai-logic.js)');
+    console.log('🤖 Initializing New 3-Step Pattern AI (v9.0)...');
+    serverAI = new NewPatternAI();
+    
+    try {
+        const savedState = await new Promise((resolve) => {
+            db.get(`SELECT state_data FROM ai_state WHERE id = 1`, (err, row) => {
+                if (err || !row) {
+                    resolve(null);
+                } else {
+                    try {
+                        resolve(JSON.parse(row.state_data));
+                    } catch (e) {
+                        resolve(null);
+                    }
+                }
+            });
+        });
+        
+        if (savedState) {
+            serverAI.loadState(savedState);
+            console.log(`📀 Loaded AI state from database`);
+        }
+    } catch (err) {
+        console.log('No existing AI state found, starting fresh');
+    }
+    
+    console.log(`✅ New AI ready - 3-Step Pattern AI active with ${serverAI.patterns.length} patterns`);
+    console.log(`📱 Telegram: ONLY sends notifications for CORRECT and WRONG predictions`);
 }
+
+// Save AI state to database periodically
+async function saveAIState() {
+    if (!serverAI) return;
+    
+    try {
+        const state = serverAI.exportState();
+        db.run(`INSERT OR REPLACE INTO ai_state (id, state_data, updated_at) VALUES (1, ?, ?)`,
+            [JSON.stringify(state), new Date().toISOString()],
+            (err) => {
+                if (err) console.error('Error saving AI state:', err);
+                else console.log('💾 AI state saved to database');
+            }
+        );
+    } catch (err) {
+        console.error('Error exporting AI state:', err);
+    }
+}
+
+setInterval(saveAIState, 5 * 60 * 1000);
 
 // ============ CORS & MIDDLEWARE ============
 app.use(cors({
@@ -158,7 +230,7 @@ app.use(express.static('public'));
 
 // ============ WEB SOCKET SERVER ============
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor v7.0 - 3-Step Pattern AI`);
+    console.log(`\n⚡ Lightning Dice Predictor v9.0 - 3-Step Pattern AI`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`🚀 Server running on port ${PORT}\n`);
     initNewAI();
@@ -167,7 +239,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
 const wss = new WebSocket.Server({ server });
 
-// Store connected clients
 const clients = new Set();
 
 wss.on('connection', (ws) => {
@@ -241,6 +312,8 @@ function getPredictionsData(limit = 500) {
                     protectionType: p.protection_type || '--',
                     predictedGroup: p.predicted_group || '--',
                     isCorrect: p.is_correct === 1,
+                    isRetry: p.is_retry === 1,
+                    retryNumber: p.retry_number || 0,
                     timestamp: new Date(p.prediction_timestamp),
                     isPending: p.actual_group === null
                 }));
@@ -310,20 +383,18 @@ function getPreviousResultsForPrediction(limit = 10) {
     });
 }
 
-// ============ GET LAST 3 RESULTS FOR PATTERN DETECTION ============
 async function getLast3Results() {
     const results = await getPreviousResultsForPrediction(3);
     if (results.length >= 3) {
-        return [results[2].group, results[1].group, results[0].group]; // [oldest, middle, newest]
+        return [results[2].group, results[1].group, results[0].group];
     }
     return null;
 }
 
-// ============ NEW PREDICTION FUNCTION (TO BE IMPLEMENTED) ============
 async function getCurrentPredictionData() {
     const last3Results = await getLast3Results();
     
-    if (!last3Results) {
+    if (!last3Results || last3Results.length < 3) {
         console.log(`⚠️ Not enough history for prediction (need 3 results, waiting...)`);
         return {
             pattern3step: null,
@@ -331,28 +402,49 @@ async function getCurrentPredictionData() {
             predictedGroup: 'WAITING',
             confidence: 0,
             waitingForData: true,
-            last3Results: null
+            last3Results: null,
+            status: "WAITING",
+            message: `Waiting for 3 results. Currently have ${last3Results?.length || 0}`
         };
     }
     
     console.log(`🔮 Checking pattern for: ${last3Results.join(' → ')}`);
     
-    // TODO: Implement your pattern detection logic here
-    // This is a placeholder - you will replace this with your actual AI logic
+    if (serverAI) {
+        const prediction = serverAI.predict(last3Results, null);
+        
+        return {
+            pattern3step: prediction.pattern,
+            protectionType: prediction.protectionType,
+            predictedGroup: prediction.predictedGroup,
+            confidence: prediction.confidence,
+            waitingForData: prediction.status === "WAITING",
+            last3Results: last3Results,
+            status: prediction.status,
+            description: prediction.description,
+            continueGroup: prediction.continueGroup,
+            switchGroup: prediction.switchGroup,
+            isRetry: prediction.isRetry || false,
+            retryCount: prediction.retryCount || 0,
+            recentData: prediction.recentData,
+            previousData: prediction.previousData
+        };
+    }
     
-    // Temporary placeholder response
+    // Fallback
+    console.log(`⚠️ AI not initialized, using fallback prediction`);
+    const patternString = `${last3Results[0]}→${last3Results[1]}→${last3Results[2]}`;
     return {
-        pattern3step: `${last3Results[0]}→${last3Results[1]}→${last3Results[2]}`,
-        protectionType: 'WAITING_FOR_AI',
-        predictedGroup: '?',
-        confidence: 0,
-        waitingForData: true,
+        pattern3step: patternString,
+        protectionType: 'CONTINUE',
+        predictedGroup: last3Results[0],
+        confidence: 50,
+        waitingForData: false,
         last3Results: last3Results,
-        message: 'AI logic not yet implemented - waiting for new-ai-logic.js'
+        status: "PREDICTION_READY",
+        description: "Fallback prediction (AI not ready)"
     };
 }
-
-// ============ PREDICTION FUNCTIONS ============
 
 async function savePredictionOnly(resultId, last3Results) {
     if (!last3Results) {
@@ -369,6 +461,8 @@ async function savePredictionOnly(resultId, last3Results) {
     console.log(`   Pattern (3-Step): ${prediction.pattern3step || 'N/A'}`);
     console.log(`   Protection Type: ${prediction.protectionType || 'N/A'}`);
     console.log(`   Predicted Group: ${prediction.predictedGroup || 'N/A'}`);
+    console.log(`   Is Retry: ${prediction.isRetry || false}`);
+    console.log(`   Retry Count: ${prediction.retryCount || 0}`);
     
     const existing = await new Promise((resolve) => {
         db.get(`SELECT id FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
@@ -381,15 +475,20 @@ async function savePredictionOnly(resultId, last3Results) {
         });
     });
     
+    const isRetry = prediction.isRetry ? 1 : 0;
+    const retryNumber = prediction.retryCount || 0;
+    
     if (existing) {
         return new Promise((resolve) => {
             db.run(`UPDATE predictions SET 
                     pattern_3step = ?,
                     protection_type = ?,
                     predicted_group = ?,
-                    prediction_timestamp = ?
+                    prediction_timestamp = ?,
+                    is_retry = ?,
+                    retry_number = ?
                     WHERE result_id = ?`,
-                [prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString(), resultId],
+                [prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString(), isRetry, retryNumber, resultId],
                 (err) => {
                     if (err) {
                         console.error('Error updating prediction:', err);
@@ -409,10 +508,12 @@ async function savePredictionOnly(resultId, last3Results) {
                     protection_type,
                     predicted_group,
                     prediction_timestamp,
-                    is_correct
-                ) VALUES (?, ?, ?, ?, ?, -1)`);
+                    is_correct,
+                    is_retry,
+                    retry_number
+                ) VALUES (?, ?, ?, ?, ?, -1, ?, ?)`);
             
-            stmt.run([resultId, prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString()], (err) => {
+            stmt.run([resultId, prediction.pattern3step, prediction.protectionType, prediction.predictedGroup, new Date().toISOString(), isRetry, retryNumber], (err) => {
                 if (err) {
                     console.error('Error saving prediction:', err);
                     resolve(null);
@@ -431,7 +532,7 @@ async function updatePredictionWithResult(resultId, actualGroup) {
     console.log(`   ACTUAL RESULT: ${actualGroup}`);
     
     const prediction = await new Promise((resolve) => {
-        db.get(`SELECT predicted_group, pattern_3step, protection_type FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
+        db.get(`SELECT predicted_group, pattern_3step, protection_type, is_retry, retry_number FROM predictions WHERE result_id = ?`, [resultId], (err, row) => {
             if (err) {
                 console.error('Error fetching prediction:', err);
                 resolve(null);
@@ -447,32 +548,26 @@ async function updatePredictionWithResult(resultId, actualGroup) {
     }
     
     const isCorrect = (prediction.predicted_group === actualGroup) ? 1 : 0;
+    const isRetry = prediction.is_retry === 1;
+    const retryCount = prediction.retry_number || 0;
     
     console.log(`   PREDICTED: ${prediction.predicted_group} → ${isCorrect ? '✓ CORRECT' : '✗ WRONG'}`);
+    console.log(`   Is Retry: ${isRetry}, Retry Count: ${retryCount}`);
     
-    // ============ TELEGRAM NOTIFICATION LOGIC ============
-    const nextRoundPrediction = await getCurrentPredictionData();
-    const nextPredictionText = nextRoundPrediction.predictedGroup || 'WAITING';
+    // Update AI model
+    if (serverAI) {
+        const updateResult = serverAI.updateWithResult(actualGroup);
+        console.log(`   AI Accuracy updated: ${serverAI.getAccuracy().toFixed(1)}%`);
+    }
     
+    // ============ SIMPLIFIED TELEGRAM NOTIFICATION ============
     if (isCorrect === 1) {
-        if (alertTriggered) {
-            console.log('🔔 AI is correct again. Telegram alerts will stop.');
-        }
+        await sendTelegramCorrectNotification(actualGroup, prediction.predicted_group, isRetry, retryCount);
         aiMissCount = 0;
         alertTriggered = false;
     } else {
         aiMissCount++;
-        console.log(`📉 AI miss #${aiMissCount}`);
-        
-        if (aiMissCount >= 4) {
-            await sendTelegramNotification(
-                aiMissCount,
-                actualGroup,
-                prediction.predicted_group,
-                nextPredictionText
-            );
-            alertTriggered = true;
-        }
+        await sendTelegramWrongNotification(actualGroup, prediction.predicted_group, retryCount);
     }
     // ============ END TELEGRAM LOGIC ============
     
@@ -489,9 +584,6 @@ async function updatePredictionWithResult(resultId, actualGroup) {
                 } else {
                     console.log(`✅ Prediction UPDATED with result for ${resultId}`);
                     await updateAIStatsTable(isCorrect === 1);
-                    
-                    // TODO: Update your AI model with the result
-                    // if (serverAI) await serverAI.updateWithResult(actualGroup);
                 }
                 resolve({ prediction, correct: isCorrect });
             }
@@ -514,8 +606,6 @@ async function updateAIStatsTable(correct) {
         });
     });
 }
-
-// ============ BROADCAST FUNCTIONS ============
 
 async function broadcastFullDataOnNewResult(gameResult, predictionData) {
     console.log(`📡 Preparing broadcast for ${clients.size} clients...`);
@@ -555,8 +645,6 @@ async function broadcastFullDataOnNewResult(gameResult, predictionData) {
     });
     console.log(`✅ Broadcast sent to ${sentCount} clients`);
 }
-
-// ============ DATA COLLECTION ============
 
 let lastGameId = null;
 let isCollecting = false;
@@ -694,6 +782,12 @@ async function checkDatabaseOnStartup() {
         
         const last3 = lastResults.slice(0, 3).map(r => r.group_name);
         console.log(`   📐 Last 3-step pattern: ${last3.join(' → ')}`);
+        
+        if (serverAI) {
+            const patternString = `${last3[0]}→${last3[1]}→${last3[2]}`;
+            const isMatch = serverAI.isPatternMatch(patternString);
+            console.log(`   🔍 Pattern "${patternString}" - ${isMatch ? 'MATCHES ✓' : 'DOES NOT MATCH (WAIT MODE) ✗'}`);
+        }
     }
     console.log('');
 }
@@ -748,6 +842,8 @@ app.get('/api/predictions', (req, res) => {
             protection_type: p.protection_type,
             predicted_group: p.predicted_group,
             is_correct: p.is_correct,
+            is_retry: p.is_retry === 1,
+            retry_number: p.retry_number || 0,
             prediction_timestamp: p.prediction_timestamp,
             is_pending: p.actual_group === null
         }));
@@ -827,10 +923,12 @@ app.get('/api/current-prediction', async (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
-        version: '7.0',
+        version: '9.0',
         timestamp: new Date().toISOString(),
         clients: clients.size,
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        aiReady: serverAI !== null,
+        telegramActive: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID)
     });
 });
 
@@ -855,10 +953,12 @@ app.get('/api/diagnostic', async (req, res) => {
         });
         
         const last3Pattern = lastResults.slice(0, 3).map(r => r.group_name);
+        const patternString = last3Pattern.length === 3 ? `${last3Pattern[0]}→${last3Pattern[1]}→${last3Pattern[2]}` : null;
+        const isPatternMatch = serverAI && patternString ? serverAI.isPatternMatch(patternString) : false;
         
         res.json({
             success: true,
-            version: '7.0',
+            version: '9.0',
             database: {
                 path: dbPath,
                 exists: fs.existsSync(dbPath)
@@ -869,7 +969,12 @@ app.get('/api/diagnostic', async (req, res) => {
             },
             last10Results: lastResults,
             last3StepPattern: last3Pattern,
-            aiStatus: serverAI ? 'initialized' : 'waiting for new-ai-logic.js'
+            patternMatch: isPatternMatch,
+            aiStatus: serverAI ? `initialized (${serverAI.version})` : 'not initialized',
+            aiAccuracy: serverAI ? serverAI.getAccuracy() : 0,
+            telegram: {
+                configured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID)
+            }
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -881,14 +986,15 @@ setInterval(collectData, 3000);
 collectData();
 
 console.log('📊 Background data collection started (every 3 seconds)');
-console.log('🤖 Server waiting for new-ai-logic.js implementation');
+console.log('🤖 3-Step Pattern AI v9.0 active - 6 patterns loaded');
 console.log('🔌 WebSocket server ready for real-time updates');
-console.log('🤖 Telegram notification active (triggers after 4 consecutive misses)');
-console.log('📈 New v7.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection');
+console.log('📱 Telegram: ONLY sends notifications for CORRECT and WRONG predictions');
+console.log('📈 v9.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic | Real-Time Learning');
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, closing server gracefully...');
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM received, saving AI state and closing gracefully...');
+    await saveAIState();
     server.close(() => {
         console.log('Server closed');
         db.close(() => {
@@ -898,8 +1004,9 @@ process.on('SIGTERM', () => {
     });
 });
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received, closing server gracefully...');
+process.on('SIGINT', async () => {
+    console.log('SIGINT received, saving AI state and closing gracefully...');
+    await saveAIState();
     server.close(() => {
         console.log('Server closed');
         db.close(() => {
