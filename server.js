@@ -1,7 +1,7 @@
 // ============================================================
-// MODIFIED server.js (v9.0 - 3-Step Pattern AI with Real-Time Learning)
+// MODIFIED server.js (v7.0 - 3-Step Pattern AI with Real-Time Learning)
 // Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic
-// Telegram: ONLY sends notifications for CORRECT and WRONG predictions
+// Telegram: ONLY sends notifications for VALID predictions (not WAITING mode)
 // ============================================================
 
 // Fix memory leak warnings
@@ -29,8 +29,8 @@ const PORT = process.env.PORT || 3000;
 let aiMissCount = 0;
 let alertTriggered = false;
 
-// ============ SIMPLIFIED TELEGRAM FUNCTIONS ============
-// ONLY sends for CORRECT and WRONG predictions
+// ============ TELEGRAM FUNCTIONS - ONLY FOR VALID PREDICTIONS ============
+// Will check if predictedGroup is valid (not null, not 'WAITING', not '--')
 
 async function sendTelegramWrongNotification(actualGroup, predictedGroup, retryCount = 0) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -38,6 +38,12 @@ async function sendTelegramWrongNotification(actualGroup, predictedGroup, retryC
     
     if (!botToken || !chatId) {
         console.log('⚠️ Telegram token or chat ID not set. Skipping notification.');
+        return;
+    }
+    
+    // CRITICAL FIX: Don't send notification if prediction was WAITING mode
+    if (!predictedGroup || predictedGroup === 'WAITING' || predictedGroup === '--' || predictedGroup === null) {
+        console.log(`📱 Telegram: Skipping notification - Invalid prediction (${predictedGroup})`);
         return;
     }
     
@@ -54,7 +60,7 @@ Actual: ${actualGroup}${retryText}`;
             chat_id: chatId,
             text: message
         });
-        console.log(`📱 Telegram: WRONG notification sent`);
+        console.log(`📱 Telegram: WRONG notification sent for ${predictedGroup} → ${actualGroup}`);
     } catch (error) {
         console.error('❌ Telegram error:', error.message);
     }
@@ -65,6 +71,12 @@ async function sendTelegramCorrectNotification(actualGroup, predictedGroup, wasR
     const chatId = process.env.TELEGRAM_CHAT_ID;
     
     if (!botToken || !chatId) {
+        return;
+    }
+    
+    // CRITICAL FIX: Don't send notification if prediction was WAITING mode
+    if (!predictedGroup || predictedGroup === 'WAITING' || predictedGroup === '--' || predictedGroup === null) {
+        console.log(`📱 Telegram: Skipping notification - Invalid prediction (${predictedGroup})`);
         return;
     }
     
@@ -81,7 +93,7 @@ Actual: ${actualGroup}${retryText}`;
             chat_id: chatId,
             text: message
         });
-        console.log(`📱 Telegram: CORRECT notification sent`);
+        console.log(`📱 Telegram: CORRECT notification sent for ${predictedGroup} → ${actualGroup}`);
     } catch (error) {
         console.error('❌ Telegram error:', error.message);
     }
@@ -99,7 +111,7 @@ const dbPath = path.join(dbDir, 'lightning_dice.db');
 console.log('📂 Database path:', dbPath);
 const db = new sqlite3.Database(dbPath);
 
-// Create tables (UPDATED for v9.0)
+// Create tables (UPDATED for v7.0)
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS results (
         id TEXT PRIMARY KEY,
@@ -162,14 +174,14 @@ db.serialize(() => {
         }
     });
     
-    console.log('✅ Database tables created/verified (v9.0 ready)');
+    console.log('✅ Database tables created/verified (v7.0 ready)');
 });
 
 // ============ AI MODEL INITIALIZATION ============
 let serverAI = null;
 
 async function initNewAI() {
-    console.log('🤖 Initializing New 3-Step Pattern AI (v9.0)...');
+    console.log('🤖 Initializing 3-Step Pattern AI (v7.0)...');
     serverAI = new NewPatternAI();
     
     try {
@@ -195,8 +207,8 @@ async function initNewAI() {
         console.log('No existing AI state found, starting fresh');
     }
     
-    console.log(`✅ New AI ready - 3-Step Pattern AI active with ${serverAI.patterns.length} patterns`);
-    console.log(`📱 Telegram: ONLY sends notifications for CORRECT and WRONG predictions`);
+    console.log(`✅ AI ready - 3-Step Pattern AI active with ${serverAI.patterns.length} patterns`);
+    console.log(`📱 Telegram: ONLY sends for VALID predictions (ignores WAITING mode)`);
 }
 
 // Save AI state to database periodically
@@ -230,7 +242,7 @@ app.use(express.static('public'));
 
 // ============ WEB SOCKET SERVER ============
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n⚡ Lightning Dice Predictor v9.0 - 3-Step Pattern AI`);
+    console.log(`\n⚡ Lightning Dice Predictor v7.0 - 3-Step Pattern AI`);
     console.log(`📍 http://localhost:${PORT}`);
     console.log(`🚀 Server running on port ${PORT}\n`);
     initNewAI();
@@ -292,11 +304,17 @@ function getResultsData(limit = 100) {
     });
 }
 
+// FIXED: Only return predictions with valid predicted_group (not WAITING)
 function getPredictionsData(limit = 500) {
     return new Promise((resolve) => {
         db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
                 FROM predictions p
                 LEFT JOIN results r ON p.result_id = r.id
+                WHERE p.predicted_group IS NOT NULL 
+                  AND p.predicted_group != 'WAITING'
+                  AND p.predicted_group != '--'
+                  AND p.pattern_3step IS NOT NULL
+                  AND p.pattern_3step != '--'
                 ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, rows) => {
             if (err) {
                 console.error('Error in getPredictionsData:', err);
@@ -317,6 +335,7 @@ function getPredictionsData(limit = 500) {
                     timestamp: new Date(p.prediction_timestamp),
                     isPending: p.actual_group === null
                 }));
+                console.log(`✅ getPredictionsData returning ${transformed.length} valid predictions (WAITING filtered out)`);
                 resolve(transformed);
             }
         });
@@ -446,6 +465,7 @@ async function getCurrentPredictionData() {
     };
 }
 
+// FIXED: Only save prediction if it's a valid prediction (not WAITING)
 async function savePredictionOnly(resultId, last3Results) {
     if (!last3Results) {
         console.log(`⚠️ Cannot save prediction for ${resultId}: insufficient history (need 3 results)`);
@@ -456,6 +476,12 @@ async function savePredictionOnly(resultId, last3Results) {
     console.log(`   Last 3 Results: ${last3Results.join(' → ')}`);
     
     const prediction = await getCurrentPredictionData();
+    
+    // CRITICAL FIX: Don't save WAITING predictions to database
+    if (prediction.status === "WAITING" || prediction.predictedGroup === 'WAITING' || prediction.predictedGroup === null) {
+        console.log(`⚠️ NOT saving prediction for ${resultId} - AI is in WAITING mode (no valid prediction)`);
+        return null;
+    }
     
     console.log(`\n📝 SAVING PREDICTION for ${resultId}:`);
     console.log(`   Pattern (3-Step): ${prediction.pattern3step || 'N/A'}`);
@@ -560,7 +586,8 @@ async function updatePredictionWithResult(resultId, actualGroup) {
         console.log(`   AI Accuracy updated: ${serverAI.getAccuracy().toFixed(1)}%`);
     }
     
-    // ============ SIMPLIFIED TELEGRAM NOTIFICATION ============
+    // ============ TELEGRAM NOTIFICATION - ONLY FOR VALID PREDICTIONS ============
+    // The send functions now check for WAITING mode internally
     if (isCorrect === 1) {
         await sendTelegramCorrectNotification(actualGroup, prediction.predicted_group, isRetry, retryCount);
         aiMissCount = 0;
@@ -734,7 +761,7 @@ async function collectData() {
                             broadcast({ type: 'prediction_pending', data: { result_id: gameId } });
                             console.log(`✅ Prediction SAVED before result for ${gameId}`);
                         } else {
-                            console.log(`❌ Prediction SAVE FAILED for ${gameId}`);
+                            console.log(`⚠️ No valid prediction saved for ${gameId} (WAITING mode)`);
                         }
                     } else {
                         console.log(`⚠️ Cannot save prediction: need 3+ history, got ${last3Results?.length || 0}`);
@@ -745,7 +772,10 @@ async function collectData() {
                     const totalResult = game.result.total;
                     const group = getGroup(totalResult);
                     
-                    await updatePredictionWithResult(gameId, group);
+                    // Only update if there was a prediction saved
+                    if (predictionData) {
+                        await updatePredictionWithResult(gameId, group);
+                    }
                     
                     pendingPredictions.delete(gameId);
                     
@@ -823,9 +853,15 @@ app.get('/api/all-data', async (req, res) => {
 app.get('/api/predictions', (req, res) => {
     const limit = parseInt(req.query.limit) || 500;
     
+    // FIXED: Only return valid predictions (not WAITING)
     db.all(`SELECT p.*, r.total, r.dice_values, r.timestamp as result_time
             FROM predictions p
             LEFT JOIN results r ON p.result_id = r.id
+            WHERE p.predicted_group IS NOT NULL 
+              AND p.predicted_group != 'WAITING'
+              AND p.predicted_group != '--'
+              AND p.pattern_3step IS NOT NULL
+              AND p.pattern_3step != '--'
             ORDER BY p.prediction_timestamp DESC LIMIT ?`, [limit], (err, predictions) => {
         if (err) {
             res.status(500).json({ error: err.message });
@@ -923,7 +959,7 @@ app.get('/api/current-prediction', async (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
-        version: '9.0',
+        version: '7.0',
         timestamp: new Date().toISOString(),
         clients: clients.size,
         uptime: process.uptime(),
@@ -941,7 +977,7 @@ app.get('/api/diagnostic', async (req, res) => {
         });
         
         const predictionsCount = await new Promise((resolve) => {
-            db.get(`SELECT COUNT(*) as count FROM predictions`, (err, row) => {
+            db.get(`SELECT COUNT(*) as count FROM predictions WHERE predicted_group IS NOT NULL AND predicted_group != 'WAITING'`, (err, row) => {
                 resolve(row ? row.count : 0);
             });
         });
@@ -958,14 +994,14 @@ app.get('/api/diagnostic', async (req, res) => {
         
         res.json({
             success: true,
-            version: '9.0',
+            version: '7.0',
             database: {
                 path: dbPath,
                 exists: fs.existsSync(dbPath)
             },
             counts: {
                 results: resultsCount,
-                predictions: predictionsCount
+                validPredictions: predictionsCount
             },
             last10Results: lastResults,
             last3StepPattern: last3Pattern,
@@ -973,7 +1009,8 @@ app.get('/api/diagnostic', async (req, res) => {
             aiStatus: serverAI ? `initialized (${serverAI.version})` : 'not initialized',
             aiAccuracy: serverAI ? serverAI.getAccuracy() : 0,
             telegram: {
-                configured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID)
+                configured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+                onlyValidPredictions: true
             }
         });
     } catch (error) {
@@ -986,10 +1023,11 @@ setInterval(collectData, 3000);
 collectData();
 
 console.log('📊 Background data collection started (every 3 seconds)');
-console.log('🤖 3-Step Pattern AI v9.0 active - 6 patterns loaded');
+console.log('🤖 3-Step Pattern AI v7.0 active - 6 patterns loaded');
 console.log('🔌 WebSocket server ready for real-time updates');
-console.log('📱 Telegram: ONLY sends notifications for CORRECT and WRONG predictions');
-console.log('📈 v9.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic | Real-Time Learning');
+console.log('📱 Telegram: ONLY sends for VALID predictions (WAITING mode is ignored)');
+console.log('📈 v7.0 Features: 3-Step Pattern Detection | CONTINUE/SWITCH Protection | Retry Logic | Real-Time Learning');
+console.log('✅ FIXED: WAITING predictions are NOT saved to database and NOT sent to Telegram');
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
